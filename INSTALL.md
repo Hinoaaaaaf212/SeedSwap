@@ -62,6 +62,12 @@ Copy everything inside `out/sd/` to the root of the SD card. Leave kaiHEN's own 
    { "write": [ { "id": "0100ee5021c9e000", "name": "Seedsow Lullaby" } ] }
    ```
 
+   **Using the Seedsow Lullaby demo?** Use this instead:
+
+   ```json
+   { "write": [ { "id": "010042d022aea000", "name": "Seedsow Lullaby Demo" } ] }
+   ```
+
 4. Start ns2jb as its README says, and leave it running.
 5. In ns2-savekit's folder, run `node tools/kit.cjs`. Pick **Seedsow Lullaby**, then the **spare
    user**.
