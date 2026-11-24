@@ -5,6 +5,11 @@ another installed Switch 1 game.
 - It needs firmware 23.0.1 with kaiHEN.
 - You pick and switch games on the console.
 
+> [!WARNING]
+> **SeedSwap can brick your console.** It runs on the same base as seedsow-semi-untethered and uses
+> the same Seedsow file system code (Seedsow FS). Anything that can go wrong there can go wrong here
+> too, including a brick. Use it at your own risk.
+
 ![SeedSwap's Library](images/library.png)
 
 | | |

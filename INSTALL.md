@@ -1,5 +1,10 @@
 # Installing SeedSwap
 
+> [!WARNING]
+> **SeedSwap can brick your console.** It runs on the same base as seedsow-semi-untethered and uses
+> the same Seedsow file system code (Seedsow FS). Anything that can go wrong there can go wrong here
+> too, including a brick. Use it at your own risk.
+
 There are five parts:
 1. Build the files on a PC.
 2. Copy the SD card files.
