@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // The on-console converter (DESIGN.md S5 and S6): the user's dumps (.nsp, .nsz, .xci, .xcz) of a
 // base game, optionally with its update, become a SeedSwap library game, the same as the PC's
 // prepare_game.py + push_prepared.py make:

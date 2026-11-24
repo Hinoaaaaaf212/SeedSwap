@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // Host titles: see hosts.h and DESIGN.md "Hosts".
 #include "hosts.h"
 

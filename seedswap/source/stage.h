@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // Staging one program of a game for a host (Seedsow or another, hosts.h), on the console: the port of the PC's
 // sw2_stage_base_overlay.py and sw2_stage_update_overlay2.py.
 //   * ExeFS: the game's code modules from its Program NCA (the update's when there is one), with

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // SeedSwap PC preview backend (Linux/WSL). Not part of the NRO.
 //   SEEDSWAP_SD     directory that stands in for the SD card root
 //   SEEDSWAP_SAVES  directory with one subdirectory per user uid (hex) = that user's Seedsow save;

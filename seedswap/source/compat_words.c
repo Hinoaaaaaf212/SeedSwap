@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // Nintendo's per-game settings for hosted games (see compat_words.h and pc/fixes/compat_words.py).
 #include "compat_words.h"
 

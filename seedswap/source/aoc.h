@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // Building add-on content (DLC) into a hosted game (DLC.md, option B), the C port of the PC tools'
 // aoc_shim.py and romfs_append.py:
 //   * four functions of the game's own sdk get new bodies: CountAddOnContent / ListAddOnContent

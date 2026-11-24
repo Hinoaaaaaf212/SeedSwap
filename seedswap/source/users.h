@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // The play user (DESIGN.md "Users"): the one console user whose Seedsow save SeedSwap swaps game saves
 // in and out of. Chosen on the console (Saves tab, Y) and kept in SD:/seedswap/config.ini as
 // play_user=<uid>; without that line the loader's save-guard user is taken, as the loader lets only that

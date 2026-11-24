@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // Add-on content (DLC) for a game in the SeedSwap library, on the console: the same result as the
 // PC's prepare_game.py + push_prepared.py (DLC.md section 0), from the user's DLC .nsp on the SD card.
 //

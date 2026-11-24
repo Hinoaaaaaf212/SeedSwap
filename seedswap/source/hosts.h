@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // Host titles (DESIGN.md "Hosts"): the installed Switch 1 games whose identity SeedSwap's games run
 // under. Each host has its own folder that the resident loader serves
 // (/ns2jb-modloader/contents/<id>/{exefs.nsp,romfs.bin}); a host with an empty folder runs as itself.

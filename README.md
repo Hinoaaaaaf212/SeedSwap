@@ -73,11 +73,15 @@ for byte. It uploads only `seedswap.nro`.
 
 ## Licences
 
-- **GPL-2.0 (`LICENSE`):** `save/`, `sd/` and `loader/`. They derive from seedsow-semi-untethered
-  and SebaaMG/ns2jb-modloader, which are both GPL-2.0. seedsow-semi-untethered's CivSwitchFS part is
-  MIT (`licenses/CivSwitchFS-MIT.txt`).
-- **`seedswap/`:** SeedSwap's own code. It includes stb_image (MIT or public domain) and font data
-  made from the Ubuntu font (`licenses/UBUNTU-FONT-LICENCE.txt`).
+- **GPL-2.0 (`LICENSE`):** everything in this repository except the third-party parts below:
+  - `seedswap/`: SeedSwap's source, `GPL-2.0-only` in each file;
+  - `save/`, `sd/` and `loader/`: these derive from seedsow-semi-untethered and
+    SebaaMG/ns2jb-modloader, which are both GPL-2.0.
+- **Third-party parts:**
+  - seedsow-semi-untethered's CivSwitchFS part is MIT (`licenses/CivSwitchFS-MIT.txt`);
+  - `seedswap/source/vendor/stb_image.h` is MIT or public domain;
+  - `seedswap/source/font_data.c` and `seedswap/assets/fonts/` are the Ubuntu font
+    (`licenses/UBUNTU-FONT-LICENCE.txt`).
 - **Downloaded files:** these keep their authors' terms.
 
 ## Credits

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // SeedSwap library: games on the SD card, the hosts' folders (hosts.h), per-game saves.
 // The library is shown for one host at a time (L->host, state.ini host=): "active" is the game in
 // that host's folder, the save is that host's, and the host itself is the built-in entry.

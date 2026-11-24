@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // Reads add-on content (DLC) from the user's own .nsp dump: the content list, the ticket, and the
 // DLC's RomFS image, decrypted and checked block by block against the dump's own hash tree.
 // Plain C with no platform calls (the file is read through a callback), so the PC tests run it too.

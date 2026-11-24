@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // Game dumps on the SD card (.nsp, .nsz, .xci, .xcz): find them and read their file list (no keys needed).
 #pragma once
 #include <stdbool.h>

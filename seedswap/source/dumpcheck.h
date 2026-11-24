@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // Tells an original dump from a rebuilt or broken one (DESIGN.md, "Bad dumps").
 //  * nca_header_signed: Nintendo signs every NCA header (signature 0: RSA-2048-PSS over SHA-256 with
 //    one of two fixed public keys). A package built or rebuilt by a tool (also a ticketless

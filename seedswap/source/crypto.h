@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // AES-128 (ECB, CTR, Nintendo's XTS) and prod.keys lookup, for reading the user's own dumps.
 // Plain C with no platform calls: the PC tests run the same code as the console.
 #pragma once

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // Per-game fixes a hosted game needs to run as Seedsow on Switch 2: the C port of the PC's
 // pc/fixes/ (mk8_devicesave.py, smo_pretouch.py). A fix finds its sites by the shape of the code, so a
 // build it has not seen is still patched when the same code is there, and reports when it is not.

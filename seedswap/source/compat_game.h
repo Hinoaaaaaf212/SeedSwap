@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // Nintendo's compatibility patches for the games in the SeedSwap library.
 //
 // On Switch 2 the system patches every Switch 1 game when it starts, chosen by the game's program

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // SeedSwap platform layer: display, input, files (SD card and the Seedsow
 // save), users, time. Two backends: plat_switch.c (kaiHEN, libounce) and
 // plat_host.c (PC preview: PNG frames, scripted input, plain directories).

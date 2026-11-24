@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // Compressed NCAs (.ncz, inside .nsz and .xcz dumps): the NCA's first 0x4000 bytes as they are, a list
 // of its sections with their keys and counters, then everything after 0x4000 decrypted and
 // zstd-compressed, as one stream ("solid") or as independent blocks (NCZBLOCK). Reading gives the

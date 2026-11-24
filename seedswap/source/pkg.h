@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // The user's game dumps, read on the console: .nsp and .nsz (PFS0), .xci and .xcz (cartridge images,
 // their "secure" partition). Lists the NCAs and tickets, reads the content lists (.cnmt), opens NCAs
 // (header with header_key, section key from the ticket or the key area) and reads their sections

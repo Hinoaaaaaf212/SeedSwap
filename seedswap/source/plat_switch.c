@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // SeedSwap platform backend for kaiHEN (libounce). Display: linear RGBA8888
 // framebuffer, double buffered. Files: the SD card and the Seedsow account
 // save through fsp-srv (HEN's FS proxy root, as mxdump/mxwrite use it).

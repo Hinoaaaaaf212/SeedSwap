@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // Nintendo's per-game settings for hosted games: the C port of pc/fixes/compat_words.py.
 //
 // On Switch 2, ns gives every Switch 1 game the record for its application ID from

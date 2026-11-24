@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // SeedSwap for kaiHEN: turns your own game dumps into games the on-console
 // modloader runs in place of Seedsow Lullaby, one save per game.
 //

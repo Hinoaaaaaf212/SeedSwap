@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // SeedSwap screens: Library, Convert, Saves, Log, plus dialogs.
 #pragma once
 #include <stdbool.h>

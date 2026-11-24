@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-only
 // SeedSwap software renderer: RGBA8888 canvas, AA rounded rectangles,
 // pre-rendered font atlases (font_data.c), scaled RGBA images.
 #pragma once
