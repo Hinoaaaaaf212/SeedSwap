@@ -14,7 +14,7 @@ Downloads the parts this repository doesn't include, at fixed commits, and check
   kurumuz/ns2jb 81d5bb1 (GitLab)                     the RO helper the loader stage starts first
 Writes:
   <out>/save/                       the Seedsow save, every file flat (for ns2-savekit)
-  <out>/seedsow-seedswap-save.zip   the same files (for JKSV)
+  <out>/seedsow-seedswap-save.zip   the same files as one zip
   <out>/sd/                         copy to the root of the SD card
 Every file is checked against SHA256SUMS.txt. Needs Python 3.8+ and nothing else.
 """

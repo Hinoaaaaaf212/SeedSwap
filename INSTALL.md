@@ -3,7 +3,7 @@
 There are four parts:
 1. Build the files on a PC.
 2. Copy the SD card files.
-3. Put the Seedsow save on the console, with ns2jb or with JKSV.
+3. Put the Seedsow save on the console with ns2jb.
 4. First run.
 
 It takes about half an hour the first time.
@@ -39,7 +39,7 @@ It downloads a few parts from their authors and checks every file. When it's don
 |---|---|
 | `out/sd/` | the SD card files |
 | `out/save/` | the Seedsow save, as loose files (for ns2jb) |
-| `out/seedsow-seedswap-save.zip` | the same save as one zip (for JKSV) |
+| `out/seedsow-seedswap-save.zip` | the same save as one zip, for other save tools |
 
 If it stops with "429 Too Many Requests", a download site is limiting you. Wait ten minutes and run it
 again.
@@ -61,9 +61,7 @@ Don't delete or replace kaiHEN's own files. This only adds files to `kaihen/`.
 screen, then close it fully (HOME → X → Close). The game has to create its save before anything can
 write into it.
 
-Then pick **one** of these methods.
-
-### Method A: ns2jb + ns2-savekit (Switch 2 only, needs a PC on the same network)
+Then write the save with ns2jb + ns2-savekit. You need a PC on the same network as the Switch 2.
 
 1. Get **[ns2jb](https://gitlab.com/kurumuz/ns2jb)** and
    **[ns2-savekit](https://github.com/dougchansan/ns2-savekit)**. You also need Node.js 20 or newer.
@@ -93,21 +91,14 @@ Then pick **one** of these methods.
    - Only one save operation per console boot is always safe.
 8. Optional: after the next restart, choose **7) Verify** to check the save against what was written.
 
-### Method B: JKSV on a Switch 1, then save transfer
-
-This needs a Switch 1 with Atmosphere and JKSV, and Seedsow Lullaby on it.
-
-1. On the Switch 1, open JKSV and back up Seedsow Lullaby's save once. That makes its folder in
-   `SD:/JKSV/`.
-2. Copy `out/seedsow-seedswap-save.zip` into that folder.
-3. In JKSV, restore that zip to the Seedsow save.
-4. Move the save to the Switch 2 with Nintendo's save data transfer: System Settings → Data Management
-   → Transfer Your Save Data, on both consoles. Send it to the **spare user** on the Switch 2.
-
 ### Already have the seedsow-semi-untethered save?
 
-Use Method A or B anyway. Method A replaces the old files and adds the new ones. Method B replaces the
-whole save.
+Do the same steps anyway. They replace the old files and add the new ones.
+
+### Don't update the console
+
+Don't install system updates, and don't use features that ask for one, such as moving saves between
+consoles. kaiHEN needs firmware 23.0.1.
 
 ## 4. First run
 
@@ -142,15 +133,15 @@ Every time you turn the console on, run the launcher (Seedsow → A) on the spar
   `SD:/switch/seedswap.nro`.
 - **New SD files or a new save:** download the new repository version and build again (step 1).
   - Copy `out/sd/` again (step 2).
-  - If the save changed, write `out/save` again with Method A (back up, then replace).
+  - If the save changed, write `out/save` again (step 3: back up, then replace).
 
 ## If something goes wrong
 
 | Problem | What to do |
 |---|---|
-| ns2-savekit doesn't show a ✔ next to Seedsow | Check `config/titles.local.json` (Method A, step 2). |
+| ns2-savekit doesn't show a ✔ next to Seedsow | Check `config/titles.local.json` (step 3, item 2). |
 | ns2-savekit says the save doesn't exist (`0x7d402`) | Start Seedsow once on that user and close it fully, then try again. |
 | The launcher menu doesn't appear | The save isn't on this user. Check that you started Seedsow on the spare user. |
 | "not the expected Seedsow build" | Your Seedsow version isn't supported. Nothing was changed. |
 | A says to power off | Hold POWER about 12 seconds → Power off, turn it on, and try again. |
-| You want the old save back | With Method A, take a new backup (2), then choose 3 and point it at the backup folder from step 5. Its files go back; files this install added stay, but the old launcher doesn't use them. |
+| You want the old save back | Take a new backup (2), then choose 3 and point it at the backup folder from step 5. Its files go back; files this install added stay, but the old launcher doesn't use them. |

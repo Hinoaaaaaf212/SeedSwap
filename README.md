@@ -49,11 +49,11 @@ for byte. It uploads only `seedswap.nro`.
 
 ## Install (firmware 23.0.1, kaiHEN on the SD card)
 
-**[INSTALL.md](INSTALL.md) has the full step-by-step guide**, with the ns2jb and JKSV methods. In short:
+**[INSTALL.md](INSTALL.md) has the full step-by-step guide**. In short:
 
 1. Copy `out/sd/` to the root of the SD card.
-2. Put the save on a spare user's Seedsow save. Use ns2jb + ns2-savekit (back up, then replace from
-   `out/save/`), or restore the zip with JKSV on a Switch 1 and use Nintendo's save transfer.
+2. Put the save on a spare user's Seedsow save with ns2jb + ns2-savekit (back up, then replace from
+   `out/save/`).
 3. Restart. Start Seedsow on that user, and press A in the launcher.
 4. Open SeedSwap. It finds the user with the exploit save and never uses that user.
 5. In the Saves tab, press Y and pick the user who plays. Restart and run the launcher (A) again.
