@@ -49,16 +49,12 @@ for byte. It uploads only `seedswap.nro`.
 
 ## Install (firmware 23.0.1, kaiHEN on the SD card)
 
+**[INSTALL.md](INSTALL.md) has the full step-by-step guide**, with the ns2jb and JKSV methods. In short:
+
 1. Copy `out/sd/` to the root of the SD card.
-2. Put the save on the console. Choose one way:
-   - **ns2jb + [ns2-savekit](https://github.com/dougchansan/ns2-savekit):**
-     1. Start Seedsow once and close it, so its save exists.
-     2. Add its program ID to `config/titles.local.json` (`write`): `0100ee5021c9e000` for the full
-        game, or `010042d022aea000` for the demo.
-     3. Run `node tools/kit.cjs`, choose 3, and point it at `out/save/`.
-   - **JKSV:** restore the zip on a Switch 1 with Atmosphere. Then move the save to the Switch 2 with
-     Nintendo's save transfer.
-3. Restart. Start Seedsow on the user with the exploit save, and press A in the launcher.
+2. Put the save on a spare user's Seedsow save. Use ns2jb + ns2-savekit (back up, then replace from
+   `out/save/`), or restore the zip with JKSV on a Switch 1 and use Nintendo's save transfer.
+3. Restart. Start Seedsow on that user, and press A in the launcher.
 4. Open SeedSwap. It finds the user with the exploit save and never uses that user.
 5. In the Saves tab, press Y and pick the user who plays. Restart and run the launcher (A) again.
 6. In the Library, press - and pick a host: Seedsow, or any installed Switch 1 game. Then switch games.
