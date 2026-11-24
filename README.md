@@ -75,6 +75,32 @@ In short:
 | Y | alula's HTTP server (port 8080). |
 | Hold - first | Runs the previous A or B. |
 
+## The save guard
+
+When an installed game runs one of your games in its place, your game can write into whichever
+user's save it is given. That includes the spare user's Seedsow save, which holds the exploit, and
+the saves of anyone else on the console. The save guard keeps it to one user:
+
+- **While the loader runs** (after the launcher's A), a host that is running one of your games can
+  open only the **guard user's** saves.
+  - For every other user the loader answers "no save", the same answer a game gets for a user who
+    has none. So the game doesn't crash; it just finds no save there.
+  - A host started with nothing in its folder runs as itself and keeps its own saves.
+- **The guard user is the play user.** Choosing the play user in SeedSwap (Saves → Y) sets it.
+  - The release's install image starts with the guard on nobody, so your games open no save until
+    you choose one.
+  - The running loader keeps the old guard until you restart and run the launcher (A) again. That's
+    why the install guide says to restart after choosing.
+- **The spare user with the exploit save can never be the guard user.** SeedSwap finds that user by
+  its save files and writes it to `SD:/seedswap/config.ini` (`exploit_user=`). The loader stage
+  (`s2_ml.lua`) refuses an install image whose guard is that user, or a user you kept out in the
+  Saves list, even if the image was edited by hand.
+- **Refusals are logged** in `SD:/ns2jb-modloader/logs/` ("Save open refused").
+
+Choosing the play user rewrites three files of the install image in `SD:/kaihen/ml/install/`:
+`image.lua`, `context.bin` and `hosts.ini`. SeedSwap copies the old ones to
+`SD:/seedswap/install-backups/` first.
+
 ## What is here
 
 | Folder | Contents |

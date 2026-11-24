@@ -153,6 +153,9 @@ consoles. kaiHEN needs firmware 23.0.1.
    - It finds the spare user by its save and never uses that user.
 5. **Choose who plays:** go to the **Saves** tab, press **Y**, and pick the user you play on. Then
    restart the console and run the launcher again (Seedsow → A).
+   - This also sets the save guard: your games can open only this user's saves, never the spare
+     user's exploit save. The restart puts it into effect. The
+     [README](README.md#the-save-guard) explains it.
 6. Add your games (next section).
 
 Every time you turn the console on, run the launcher (Seedsow → A) on the spare user before playing.
@@ -185,6 +188,7 @@ yourself of games you own, and the `prod.keys` from your own console (see the wa
    - This goes for Seedsow too, on a fresh setup.
 5. **Play:** in the **Library**, pick a game and press **A** (Switch). Then start the host game from
    HOME on the user who plays, as SeedSwap says at the bottom of the screen.
+   - On any other user the game finds no save: the save guard keeps it to the user who plays.
    - To change games, open SeedSwap again and switch. Each game keeps its own save.
 
 If a dump doesn't convert, SeedSwap says why: for example, keys that are missing or too old, or a bad
@@ -216,5 +220,7 @@ dump. Its **Log** tab has the details.
 | The launcher menu doesn't appear | The save isn't on this user. Check that you started Seedsow on the spare user. |
 | "not the expected Seedsow build" | Your Seedsow version isn't supported. Nothing was changed. |
 | A says to power off | Hold POWER about 12 seconds → Power off, turn it on, and try again. |
+| A game finds no save, or can't save | Start the host on the user who plays. If you just chose that user, restart and run the launcher (A) first. |
+| SeedSwap says "The loader is set up for a different user" | Restart and run the launcher (A). If it still says so, open Saves → Y and do what it says. |
 | SeedSwap says a host's "permissions aren't known yet" | Start that host game once from HOME, then open SeedSwap again (step 5, item 4). |
 | You want the old save back | Take a new backup (2), then choose 3 and point it at the backup folder from step 5. Its files go back; files this install added stay, but the old launcher doesn't use them. |
