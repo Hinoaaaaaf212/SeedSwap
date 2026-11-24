@@ -68,7 +68,7 @@ for byte. It uploads only `seedswap.nro`.
 | Button | What it does |
 |---|---|
 | A | Runs kaiHEN, with SeedSwap's loader first. |
-| B | Same as A, with the newest seedsow-semi-untethered scan and wave stages (e5c14e5). Then installs SeedSwap from the save to `SD:/switch`, unless the SD copy is the same or newer. |
+| B | Same as A, with the newest seedsow-semi-untethered scan and wave stages (e5c14e5). Where e5c14e5 ends the run after an uneven race wave, B retries like A and logs it. Then B installs SeedSwap from the save to `SD:/switch`, unless the SD copy is the same or newer. |
 | Y | alula's HTTP server (port 8080). |
 | Hold - first | Runs the previous A or B. |
 

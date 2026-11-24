@@ -432,7 +432,8 @@ if wres.negativeControl then next_profile = "positive" end
 elseif profile == "positive" then
 if wres.canaryRedirect then state.canaryQualified = true
 elseif not wres.triggerAborted and wres.shape < 10 then
-state.workerStateSafe = false; break
+state.shapeRetries = (state.shapeRetries or 0) + 1
+log(str_format("B: wave %02d shape %d/10, retrying (e5c14e5 stops here)", attempt, wres.shape))
 end
 end
 end
@@ -627,8 +628,8 @@ end
 local wres = M.analyze_wave(rt, fs, setup, config, stage_name, wave, group, false, campaign_state)
 fs.close_reservation_group(group, not wres.releaseWasSent, setup.pktBuf)
 if not wres.triggerAborted and wres.shape < 10 then
-campaign_state.workerStateSafe = false
-return {ok = false, wavesTotal = waves_total}
+campaign_state.shapeRetries = (campaign_state.shapeRetries or 0) + 1
+log(str_format("B: %s step %d shape %d/10, retrying (e5c14e5 stops here)", stage_name, step_idx, wres.shape))
 end
 
 if wres.window and wres.preReleaseUsed and
