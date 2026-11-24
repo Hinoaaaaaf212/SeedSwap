@@ -179,6 +179,10 @@ yourself of games you own, and the `prod.keys` from your own console (see the wa
    - **DLC:** it's added to its game. Press A again on the DLC to remove it.
 4. **Pick a host (once):** in the **Library**, press **-** and pick a host. That's Seedsow, or any
    installed Switch 1 game. Your games run in its place.
+   - If the host's row says **start it once first**, SeedSwap doesn't know the host yet. Start
+     the host game once from HOME on the user who plays, close it, and open SeedSwap again. If it
+     still says so, restart, run the launcher (Seedsow → A) and open SeedSwap again.
+   - This goes for Seedsow too, on a fresh setup.
 5. **Play:** in the **Library**, pick a game and press **A** (Switch). Then start the host game from
    HOME on the user who plays, as SeedSwap says at the bottom of the screen.
    - To change games, open SeedSwap again and switch. Each game keeps its own save.
@@ -212,4 +216,5 @@ dump. Its **Log** tab has the details.
 | The launcher menu doesn't appear | The save isn't on this user. Check that you started Seedsow on the spare user. |
 | "not the expected Seedsow build" | Your Seedsow version isn't supported. Nothing was changed. |
 | A says to power off | Hold POWER about 12 seconds → Power off, turn it on, and try again. |
+| SeedSwap says a host's "permissions aren't known yet" | Start that host game once from HOME, then open SeedSwap again (step 5, item 4). |
 | You want the old save back | Take a new backup (2), then choose 3 and point it at the backup folder from step 5. Its files go back; files this install added stay, but the old launcher doesn't use them. |

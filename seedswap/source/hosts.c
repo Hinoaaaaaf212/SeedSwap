@@ -184,6 +184,8 @@ int hosts_find(const HostSet *s, uint64_t id) {
     return -1;
 }
 
+static bool seedsow_npdm(uint8_t **out, size_t *n);
+
 static void host_name(Host *h, AppEntry *apps, int *napps) {
     char p[96];
     snprintf(p, sizeof(p), HOSTS_DIR "/%s/host.ini", h->hex);
@@ -241,7 +243,7 @@ void hosts_load(HostSet *s) {
         char q[96];
         snprintf(p, sizeof(p), HOSTS_DIR "/%s/main.npdm", h->hex);
         snprintf(q, sizeof(q), HOSTS_DIR "/%s/codeinfo.bin", h->hex);
-        h->npdm = (exists(p) && exists(q)) || (h->id == SEEDSOW_TITLE && (exists(p) || exists(LEGACY_HOST_NPDM)));
+        h->npdm = (exists(p) && exists(q)) || (h->id == SEEDSOW_TITLE && (exists(p) || seedsow_npdm(NULL, NULL)));
     }
     free(apps);
 }
@@ -280,35 +282,46 @@ bool hosts_npdm(const Host *h, uint8_t **out, size_t *n, char *err, size_t errn)
         free(npdm);
         app_log("host %s: the NPDM in " HOSTS_DIR " is not used: %s", h->hex, have_info ? why : "no code data with it");
     }
-    if (h->id != SEEDSOW_TITLE) {
-        snprintf(text, sizeof(text), "%s's permissions aren't known yet. Start it once with this loader, restart, run the "
-                 "launcher (A) and open SeedSwap again.", h->name);
-        return say(err, errn, text);
+    if (h->id == SEEDSOW_TITLE && seedsow_npdm(out, n)) return true;
+    // Seedsow too: a card without the PC's files learns it from the loader like any other host
+    snprintf(text, sizeof(text), "%s's permissions aren't known yet. Start it once with this loader, restart, run the "
+             "launcher (A) and open SeedSwap again.", h->name);
+    return say(err, errn, text);
+}
+
+// Seedsow's NPDM from before hosts had folders: the file older versions kept, else any game image
+// built for it (then kept in that file). out NULL: only whether there is one.
+static bool seedsow_npdm(uint8_t **out, size_t *n) {
+    void *legacy = NULL;
+    uint8_t *npdm = NULL;
+    size_t nn = 0;
+    if (read_blob(VFS_SD, LEGACY_HOST_NPDM, 0x10000, &legacy, &nn) && host_npdm_valid(legacy, nn)) {
+        npdm = legacy;
+    } else {
+        free(legacy);
+        bool found = npdm_in_image("/ns2jb-modloader/contents/0100ee5021c9e000/exefs.nsp", &npdm, &nn);
+        VfsEntry *e = NULL;
+        int count = 0;
+        static const char *NAMES[] = {"exefs.nsp", "exefs-nocompat.nsp", "exefs-nodlc.nsp"};
+        char p[320];
+        if (!found && vfs_list(VFS_SD, SS_ROOT "/games", &e, &count) == 0) {
+            for (int i = 0; !found && i < count; i++)
+                for (int k = 0; !found && e[i].is_dir && k < 3; k++) {
+                    snprintf(p, sizeof(p), SS_ROOT "/games/%s/%s", e[i].name, NAMES[k]);
+                    found = npdm_in_image(p, &npdm, &nn);
+                }
+            free(e);
+        }
+        if (!found) return false;
+        mkdirs(VFS_SD, SS_ROOT "/system");
+        write_file(LEGACY_HOST_NPDM, npdm, nn);
     }
-    // Seedsow: the file older versions kept, else any game image built for it
-    if (read_blob(VFS_SD, LEGACY_HOST_NPDM, 0x10000, &npdm, &nn) && host_npdm_valid(npdm, nn)) {
+    if (out) {
         *out = npdm;
         *n = nn;
-        return true;
+    } else {
+        free(npdm);
     }
-    free(npdm);
-    bool found = npdm_in_image("/ns2jb-modloader/contents/0100ee5021c9e000/exefs.nsp", out, n);
-    VfsEntry *e = NULL;
-    int count = 0;
-    static const char *NAMES[] = {"exefs.nsp", "exefs-nocompat.nsp", "exefs-nodlc.nsp"};
-    if (!found && vfs_list(VFS_SD, SS_ROOT "/games", &e, &count) == 0) {
-        for (int i = 0; !found && i < count; i++)
-            for (int k = 0; !found && e[i].is_dir && k < 3; k++) {
-                snprintf(text, sizeof(text), SS_ROOT "/games/%s/%s", e[i].name, NAMES[k]);
-                found = npdm_in_image(text, out, n);
-            }
-        free(e);
-    }
-    if (!found)
-        return say(err, errn, "Seedsow's main.npdm wasn't found. Copy it to SD:/seedswap/system/seedsow-main.npdm, or add "
-                   "one game from the PC first.");
-    mkdirs(VFS_SD, SS_ROOT "/system");
-    write_file(LEGACY_HOST_NPDM, *out, *n);
     return true;
 }
 
@@ -456,9 +469,12 @@ static bool store_host(Host *host, const uint8_t *npdm, size_t nn, const uint8_t
 static void host_file_path(const Host *h, char *out, size_t n) { snprintf(out, n, HOST_FILES_DIR "/%s.bin", h->hex); }
 
 bool hosts_request(const Host *h) {
-    if (h->npdm || h->id == SEEDSOW_TITLE) return true;
     char p[96];
     host_file_path(h, p, sizeof(p));
+    if (h->npdm) {
+        if (exists(p)) vfs_delete(VFS_SD, p);   // known another way since it was made (Seedsow's old sources)
+        return true;
+    }
     if (exists(p)) return true;
     mkdirs(VFS_SD, HOST_FILES_DIR);
     uint8_t *zero = calloc(1, HOST_FILE_BYTES);

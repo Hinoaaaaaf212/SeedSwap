@@ -75,7 +75,8 @@ bool npdm_host_ok(const uint8_t *npdm, size_t n, uint64_t id, const uint8_t *inf
 bool npdm_for_game(const uint8_t *host, size_t hn, const uint8_t *game, size_t gn, uint8_t **out);
 
 // The host's signed main.npdm (malloc'd). Seedsow: also the file older SeedSwap versions kept
-// (LEGACY_HOST_NPDM) or one found in a game image built for it.
+// (LEGACY_HOST_NPDM) or one found in a game image built for it; without those it comes from the
+// loader like any other host's (hosts_load counts those sources as known).
 bool hosts_npdm(const Host *h, uint8_t **out, size_t *n, char *err, size_t errn);
 
 // ---- loader reports
@@ -89,7 +90,7 @@ void probe_free(HostProbe *p);
 // For the hosts whose NPDM is not known yet: reads the loader's host files, then the readable loader
 // reports, newest first; stores each one that checks out. Returns how many were stored.
 int hosts_import(HostSet *s);
-// Leaves an empty host file for a host whose NPDM isn't known (nothing for Seedsow or a known one).
+// Leaves an empty host file for a host whose NPDM isn't known, Seedsow included (nothing for a known one).
 bool hosts_request(const Host *h);
 
 // ---- ExeFS images

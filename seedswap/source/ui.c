@@ -310,7 +310,7 @@ static void host_line(int i, char *out, size_t n) {
         if (!L->games[k].builtin && L->games[k].host == i) game = L->games[k].name;
     snprintf(out, n, "%s%s%s", game,
              !lib_host_served(L, h) ? "  \xe2\x80\xa2  restart and run the launcher first"
-             : h->id != SEEDSOW_TITLE && !h->npdm ? "  \xe2\x80\xa2  start it once first" : "",
+             : !h->npdm ? "  \xe2\x80\xa2  start it once first" : "",
              L->play_user_set && !h->user_save ? "  \xe2\x80\xa2  no save for the play user yet" : "");
 }
 

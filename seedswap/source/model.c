@@ -543,7 +543,7 @@ static const char *switch_blocker(const Library *L, int idx, bool moving) {
         snprintf(why, sizeof(why), "Start %s once on the play user first.", H->name);
         return why;
     }
-    if (!g->builtin && H->id != SEEDSOW_TITLE && !H->npdm) {
+    if (!g->builtin && !H->npdm) {
         snprintf(why, sizeof(why), "Start %s once from the HOME menu, then open SeedSwap again. If it still says this, "
                  "restart and run the launcher (A) first.", H->name);
         return why;
