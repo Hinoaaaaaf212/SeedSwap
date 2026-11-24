@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define MAX_NSPS 64
+#define MAX_NSPS 512   // a game with many DLC dumps (Smash: 99); when full, a base or update replaces a DLC
 #define NSP_DIR "/seedswap/nsp"
 
 enum { NSP_BASE, NSP_UPDATE, NSP_DLC, NSP_UNKNOWN };
@@ -22,7 +22,7 @@ typedef struct {
     char container[8];            // ".nsp", ".nsz", ".xci", ".xcz"
 } NspInfo;
 
-int nsp_scan(NspInfo *out, int max);   // SD:/seedswap/nsp and the SD root
+int nsp_scan(NspInfo *out, int max);   // SD:/seedswap/nsp and the SD root; games and updates first, then DLC
 bool nsp_is_dump(const char *file_name);  // .nsp, .nsz, .xci or .xcz
 bool nsp_inspect(NspInfo *n);          // read the PFS0 header; fills title_id/kind/ncas/ticket/cnmt
 const char *nsp_kind_name(int kind);

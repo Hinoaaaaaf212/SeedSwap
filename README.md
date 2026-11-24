@@ -1,9 +1,9 @@
 # SeedSwap
 
-SeedSwap lets you play Switch 1 games on a Switch 2 by running them in place of Seedsow Lullaby or
-another installed Switch 1 game.
-- It needs firmware 23.0.1 with kaiHEN.
-- You pick and switch games on the console.
+Play your Switch 1 games on a Switch 2. SeedSwap runs them in place of Seedsow Lullaby or another
+Switch 1 game you have installed.
+
+Needs firmware 23.0.1 and kaiHEN.
 
 > [!WARNING]
 > **SeedSwap can brick your console.** It's rare, but it can happen. SeedSwap runs on the same base
@@ -18,117 +18,65 @@ another installed Switch 1 game.
 | ![Converting a dump on the console](images/convert.png) | ![Choosing the play user](images/play-user.png) |
 | ![Saves and backups](images/saves.png) | ![Setting up an installed game as a host](images/add-host.png) |
 
-These screenshots come from SeedSwap 0.12.0's PC preview, which runs the real UI. The users and user
-IDs in them are made up.
+*Screenshots from the PC preview. The users are made up.*
 
-This repository builds two things:
-- **The Seedsow save.** It holds alula's launcher, the seedsow-semi-untethered exploit chain, and
-  SeedSwap's A/B launcher entries.
-- **The SD card files.** These are SeedSwap itself, kaiHEN's loader stage, and the install image.
+## Get started
 
-## Build
+1. Download `build.exe` and `seedswap.nro` from the [latest release](../../releases/latest).
+2. Follow **[INSTALL.md](INSTALL.md)**.
 
-1. **Get SeedSwap (`seedswap.nro`).** GitHub Actions builds it from `seedswap/` on every push:
-   - Download the `seedswap-nro` artifact of a run.
-   - Or, when the repo has a `v*` tag, get it from that tag's release.
-   - Or build it yourself (see `seedswap/README.md`).
-2. **Build the rest** (needs Python 3.8 or newer):
+> **Use only your own games and keys.** This repository has neither. Don't download them.
 
-       python3 build.py --nro seedswap.nro
+## What it does
 
-   This writes:
-   - `out/save/`: the Seedsow save;
-   - `out/seedsow-seedswap-save.zip`: the same save as one zip;
-   - `out/sd/`: the SD card files.
-
-   It also downloads three parts at fixed commits and checks every file against `SHA256SUMS.txt`:
-   - alula's launcher files;
-   - the unchanged seedsow-semi-untethered modules;
-   - kurumuz's ns2jb RO helper.
-
-   The repository doesn't include these parts: alula's and kurumuz's repositories have no licence
-   file, so `build.py` downloads all three from their sources.
-
-The CI run does the same steps and checks the result. Its SeedSwap must match the tested build byte
-for byte. It uploads only `seedswap.nro`.
-
-## Install (firmware 23.0.1, kaiHEN on the SD card)
-
-**[INSTALL.md](INSTALL.md) has the full step-by-step guide.** It also covers updating an existing
-seedsow-semi-untethered save over the network (`upload_save.py`).
-
-> **Use only your own games and keys.** Only play dumps of games you own, made yourself, and only use
-> the `prod.keys` from your own console. This repository has no games or keys; don't download them
-> from anywhere.
-
-In short:
-
-1. Copy `out/sd/` to the root of the SD card.
-2. Put the save on a spare user's Seedsow save with ns2jb + ns2-savekit (back up, then replace from
-   `out/save/`).
-3. Restart. Start Seedsow on that user, and press A in the launcher.
-4. Open SeedSwap. It finds the user with the exploit save and never uses that user.
-5. In the Saves tab, press Y and pick the user who plays. Restart and run the launcher (A) again.
-6. In the Library, press - and pick a host: Seedsow, or any installed Switch 1 game. Then switch games.
-
-## Launcher buttons
-
-| Button | What it does |
-|---|---|
-| A | Runs kaiHEN, with SeedSwap's loader first. |
-| B | Same as A, with the newest seedsow-semi-untethered scan and wave stages (e5c14e5). Where e5c14e5 ends the run after an uneven race wave, B retries like A and logs it. Then B installs SeedSwap from the save to `SD:/switch`, unless the SD copy is the same or newer. |
-| Y | alula's HTTP server (port 8080). |
-| Hold - first | Runs the previous A or B. |
+- Converts your game dumps on the console, with their updates and DLC.
+- Switches between games. Each game keeps its own save.
+- Runs your games in place of Seedsow or any installed Switch 1 game (the host).
+- Keeps your games away from other users' saves (the save guard).
 
 ## The save guard
 
-When an installed game runs one of your games in its place, your game can write into whichever
-user's save it is given. That includes the spare user's Seedsow save, which holds the exploit, and
-the saves of anyone else on the console. The save guard keeps it to one user:
+A game running in place of another one could write to any user's save, including the exploit save.
+The save guard stops that:
 
-- **While the loader runs** (after the launcher's A), a host that is running one of your games can
-  open only the **guard user's** saves.
-  - For every other user the loader answers "no save", the same answer a game gets for a user who
-    has none. So the game doesn't crash; it just finds no save there.
-  - A host started with nothing in its folder runs as itself and keeps its own saves.
-- **The guard user is the play user.** Choosing the play user in SeedSwap (Saves → Y) sets it.
-  - The release's install image starts with the guard on nobody, so your games open no save until
-    you choose one.
-  - The running loader keeps the old guard until you restart and run the launcher (A) again. That's
-    why the install guide says to restart after choosing.
-- **The spare user with the exploit save can never be the guard user.** SeedSwap finds that user by
-  its save files and writes it to `SD:/seedswap/config.ini` (`exploit_user=`). The loader stage
-  (`s2_ml.lua`) refuses an install image whose guard is that user, or a user you kept out in the
-  Saves list, even if the image was edited by hand.
-- **Refusals are logged** in `SD:/ns2jb-modloader/logs/` ("Save open refused").
+- Your games can only open the saves of the user who plays (Saves → Y in SeedSwap).
+- For any other user, the game just finds no save.
+- The user with the exploit save can never be picked.
+- After picking the user, restart and run the launcher (A) once.
 
-Choosing the play user rewrites three files of the install image in `SD:/kaihen/ml/install/`:
-`image.lua`, `context.bin` and `hosts.ini`. SeedSwap copies the old ones to
-`SD:/seedswap/install-backups/` first.
+Refused saves are logged in `SD:/ns2jb-modloader/logs/`.
 
-## What is here
+## Build it yourself
 
-| Folder | Contents |
+- **`seedswap.nro`:** GitHub Actions builds it on every push. To build it yourself, see
+  `seedswap/README.md`.
+- **Everything else:** `python3 build.py --nro seedswap.nro` (Python 3.8 or newer). `build.exe` is
+  this same script with the repository's files inside.
+
+`build.py` downloads three parts from their authors, because they can't be included here: alula's
+launcher, seedsow-semi-untethered, and kurumuz's RO helper. It checks every file against
+`SHA256SUMS.txt`.
+
+## What's in this repository
+
+| Path | What |
 |---|---|
-| `upload_save.py` | Updates an existing seedsow-semi-untethered save over the launcher's HTTP server (see INSTALL.md). |
-| `save/` | Our files for the Seedsow save: the kaiHEN stage that starts the loader (`s2_kh_ro.lua`), the A/B menu, the A and B entries, their hardened copies, and B's two newer modules. |
-| `sd/` | The loader stage (`kaihen/s2_ml.lua`), `ml_image.lua`, `tpl.lua`, and the install image. The image has Seedsow plus 9 spare host slots. Its save guard is on nobody until you pick the play user. |
-| `seedswap/` | SeedSwap's source. |
-| `loader/` | Our changes to ns2jb-modloader, which the install image is built from, and the image tools. |
-| `licenses/` | Licence texts. |
+| `seedswap/` | SeedSwap's source |
+| `save/` | our files for the Seedsow save (the A/B launcher entries and the loader start) |
+| `sd/` | our SD card files (the loader stage and the install image) |
+| `loader/` | our changes to ns2jb-modloader, and the image tools |
+| `build.py` | makes the save and SD files |
+| `upload_save.py` | updates an existing seedsow-semi-untethered save over the network |
 
 ## Licences
 
-- **GPL-2.0 (`LICENSE`):** everything in this repository except the third-party parts below:
-  - `seedswap/`: SeedSwap's source, `GPL-2.0-only` in each file;
-  - `save/`, `sd/` and `loader/`: these derive from seedsow-semi-untethered and
-    SebaaMG/ns2jb-modloader, which are both GPL-2.0.
-- **Third-party parts:**
-  - seedsow-semi-untethered's CivSwitchFS part is MIT (`licenses/CivSwitchFS-MIT.txt`);
-  - `seedswap/source/vendor/stb_image.h` is MIT or public domain;
-  - `seedswap/source/font_data.c` and `seedswap/assets/fonts/` are the Ubuntu font
-    (`licenses/UBUNTU-FONT-LICENCE.txt`).
-- **Downloaded files:** these keep their authors' terms.
+- **GPL-2.0 (`LICENSE`)** for everything here except the parts below. `save/`, `sd/` and `loader/`
+  come from seedsow-semi-untethered and ns2jb-modloader, both GPL-2.0.
+- **MIT:** seedsow-semi-untethered's CivSwitchFS part (`licenses/CivSwitchFS-MIT.txt`).
+- **MIT or public domain:** `seedswap/source/vendor/stb_image.h`.
+- **Ubuntu font licence:** `seedswap/source/font_data.c` and `seedswap/assets/fonts/`
+  (`licenses/UBUNTU-FONT-LICENCE.txt`).
+- **Downloaded files** keep their authors' terms.
 
 ## Credits
 

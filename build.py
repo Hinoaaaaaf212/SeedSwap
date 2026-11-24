@@ -2,9 +2,15 @@
 """Build SeedSwap's Seedsow save and SD card files (Switch 2, firmware 23.0.1).
 
   python3 build.py [--nro PATH] [--out DIR] [--cache DIR]
+  build.exe [--nro PATH] [--out DIR] [--cache DIR]
 
 --nro is SeedSwap built from seedswap/ (default seedswap/seedswap.nro; see seedswap/README.md), or
 the seedswap.nro of a GitHub Actions run.
+
+build.exe (in each release, Windows) is this script with the repository's save/, sd/ and
+SHA256SUMS.txt inside, so it needs neither Python nor the repository. It takes seedswap.nro from
+its own folder and writes out/ and cache/ there; double-clicked, it keeps its window open at the end.
+Use the build.exe and seedswap.nro of the same release: SHA256SUMS.txt names that NRO.
 
 Downloads the parts this repository doesn't include, at fixed commits, and checks each by SHA-256:
   alula/switch-artemis-launcher ae02495 (GitHub)     the launcher save: core.lua, http.lua,
@@ -23,11 +29,14 @@ import hashlib
 import io
 import re
 import sys
+import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
+FROZEN = getattr(sys, "frozen", False)  # build.exe (PyInstaller): the repository's files are inside it
+HERE = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))  # save/, sd/, SHA256SUMS.txt
+HOME = Path(sys.executable).resolve().parent if FROZEN else HERE        # seedswap.nro, out/, cache/
 ALULA = ("https://raw.githubusercontent.com/alula/switch-artemis-launcher/"
          "ae0249547c1e05df46a63a5c05818914b3ae0706/")
 SEMI = ("https://gitlab.com/rushinz/seedsow-semi-untethered/-/raw/"
@@ -94,8 +103,12 @@ def fetch(url: str, cache: Path) -> bytes:
     if local.is_file():
         return local.read_bytes()
     req = urllib.request.Request(url, headers={"User-Agent": "seedswap-build"})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        data = r.read()
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            data = r.read()
+    except (urllib.error.URLError, OSError) as e:
+        raise SystemExit("couldn't download %s: %s\nCheck the internet connection and run it again "
+                         "(after a 429, wait ten minutes)." % (url, getattr(e, "reason", e)))
     cache.mkdir(parents=True, exist_ok=True)
     local.write_bytes(data)
     return data
@@ -132,11 +145,14 @@ def write_tree(root: Path, files: dict):
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--nro", type=Path, default=HERE / "seedswap" / "seedswap.nro")
-    ap.add_argument("--out", type=Path, default=HERE / "out")
-    ap.add_argument("--cache", type=Path, default=HERE / "cache")
+    ap.add_argument("--nro", type=Path, default=HOME / "seedswap.nro" if FROZEN else HERE / "seedswap" / "seedswap.nro")
+    ap.add_argument("--out", type=Path, default=HOME / "out")
+    ap.add_argument("--cache", type=Path, default=HOME / "cache")
     a = ap.parse_args(argv)
     if not a.nro.is_file():
+        if FROZEN:
+            raise SystemExit("no seedswap.nro in %s: download it from the same release as build.exe and put it "
+                             "next to build.exe" % HOME)
         raise SystemExit("no %s: build SeedSwap first (seedswap/README.md) or pass --nro" % a.nro)
     nro = a.nro.read_bytes()
     if nro[0x10:0x14] != b"NRO0":
@@ -185,5 +201,31 @@ def main(argv=None) -> int:
     return 0
 
 
+def double_clicked() -> bool:
+    """build.exe got a window of its own (Explorer): only its two processes use the console."""
+    if not FROZEN or sys.platform != "win32":
+        return False
+    import ctypes
+    ids = (ctypes.c_uint32 * 16)()
+    return 0 < ctypes.windll.kernel32.GetConsoleProcessList(ids, 16) <= 2
+
+
+def run() -> int:
+    try:
+        return main()
+    except SystemExit as e:
+        if isinstance(e.code, str):
+            print(e.code, file=sys.stderr)
+            return 1
+        return e.code or 0
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    pause = double_clicked()
+    code = run()
+    if pause:
+        try:
+            input("\n%s. Press Enter to close this window." % ("Done" if code == 0 else "It stopped"))
+        except EOFError:
+            pass
+    sys.exit(code)

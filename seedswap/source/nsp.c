@@ -76,23 +76,31 @@ static void scan_dir(const char *dir, NspInfo *out, int max, int *count) {
     VfsEntry *e;
     int k;
     if (vfs_list(VFS_SD, dir, &e, &k) != 0) return;
-    for (int i = 0; i < k && *count < max; i++) {
+    for (int i = 0; i < k; i++) {
         if (e[i].is_dir || !nsp_is_dump(e[i].name)) continue;
-        NspInfo *n = &out[(*count)++];
-        memset(n, 0, sizeof(*n));
-        snprintf(n->file, sizeof(n->file), "%s", e[i].name);
-        snprintf(n->container, sizeof(n->container), "%s", e[i].name + strlen(e[i].name) - 4);
-        for (char *c = n->container; *c; c++) *c = (char)tolower((unsigned char)*c);
-        snprintf(n->path, sizeof(n->path), "%s/%s", strcmp(dir, "/") ? dir : "", e[i].name);
-        n->size = e[i].size;
-        parse_file_name(n);
+        NspInfo n;
+        memset(&n, 0, sizeof(n));
+        snprintf(n.file, sizeof(n.file), "%s", e[i].name);
+        snprintf(n.container, sizeof(n.container), "%s", e[i].name + strlen(e[i].name) - 4);
+        for (char *c = n.container; *c; c++) *c = (char)tolower((unsigned char)*c);
+        snprintf(n.path, sizeof(n.path), "%s/%s", strcmp(dir, "/") ? dir : "", e[i].name);
+        n.size = e[i].size;
+        parse_file_name(&n);
+        int at = *count < max ? (*count)++ : -1;
+        // full: a game or an update takes a DLC dump's place, so a game is never hidden behind its DLC
+        for (int j = max - 1; at < 0 && n.kind != NSP_DLC && j >= 0; j--)
+            if (out[j].kind == NSP_DLC) at = j;
+        if (at >= 0) out[at] = n;
     }
     free(e);
 }
 
+// games and updates by name, then DLC by name: a game with many DLC dumps doesn't push the others away
 static int cmp_nsp(const void *a, const void *b) {
     const NspInfo *x = a, *y = b;
-    int c = strcasecmp(x->name, y->name);
+    int c = (x->kind == NSP_DLC) - (y->kind == NSP_DLC);
+    if (c) return c;
+    c = strcasecmp(x->name, y->name);
     return c ? c : x->kind - y->kind;
 }
 

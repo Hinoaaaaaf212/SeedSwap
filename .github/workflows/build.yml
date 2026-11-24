@@ -1,7 +1,9 @@
 # Builds SeedSwap from seedswap/ with ouncebrew/ounce-devkit (the toolchain image, pinned), then the
 # save and SD files with build.py, and checks every file against SHA256SUMS.txt (the NRO included,
-# so a run proves it is byte for byte the tested build). Only seedswap.nro is uploaded: the save
-# and the SD files hold downloads that have no licence to redistribute, so build.py makes them.
+# so a run proves it is byte for byte the tested build). Then build.exe: build.py with save/, sd/
+# and SHA256SUMS.txt inside (PyInstaller), run once on Windows the way a user runs it. Only
+# seedswap.nro and build.exe are uploaded: the save and the SD files hold downloads that have no
+# licence to redistribute, so build.py / build.exe make them on the user's PC.
 name: build
 
 on:
@@ -16,6 +18,7 @@ permissions:
 
 env:
   OUNCE_DEVKIT: 75cea5538b3a57d8f2ecf53354274cf00a365d20   # its install.sh default devkit: 20261115b
+  PYINSTALLER: 6.22.3
 
 jobs:
   build:
@@ -47,9 +50,46 @@ jobs:
           path: seedswap/seedswap.nro
           if-no-files-found: error
 
+  exe:
+    needs: build
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build build.exe (PyInstaller ${{ env.PYINSTALLER }})
+        run: |
+          python -m pip install --quiet "pyinstaller==$PYINSTALLER"
+          python -m PyInstaller --noconfirm --onefile --name build \
+            --add-data "save;save" --add-data "sd;sd" --add-data "SHA256SUMS.txt;." build.py
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: seedswap-nro
+          path: dist
+
+      - name: Run it as a user does (seedswap.nro beside it, no arguments)
+        run: |
+          cd dist
+          ./build.exe < /dev/null
+          test -f out/seedsow-seedswap-save.zip
+          sha256sum build.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-exe
+          path: dist/build.exe
+          if-no-files-found: error
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [build, exe]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -57,7 +97,11 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: seedswap-nro
-      - name: GitHub release with seedswap.nro
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-exe
+      - name: GitHub release with seedswap.nro and build.exe
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" seedswap.nro --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes "SeedSwap built by GitHub Actions. Build the save and SD files with build.py --nro seedswap.nro."
+        run: |
+          gh release create "$GITHUB_REF_NAME" seedswap.nro build.exe --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes "Put build.exe and seedswap.nro in one folder and run build.exe (Windows). It makes the SD card files and the Seedsow save. Without Windows: python3 build.py --nro seedswap.nro. Steps: INSTALL.md."
