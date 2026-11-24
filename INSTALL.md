@@ -12,21 +12,32 @@ About half an hour the first time.
 - A Switch 2 on **firmware 23.0.1**, with **[kaiHEN](https://github.com/ouncebrew/kaihen)** set up.
 - **Seedsow Lullaby** installed (the full game; the demo is untested).
 - **A spare user** for the exploit save (System Settings → Users → Add User). Don't play on it.
-- A PC. Windows uses `build.exe`; Mac and Linux need Python 3.8 or newer.
+- A PC: Windows for `build.exe`, or any PC with Python 3.8 or newer.
 
 > **Use only your own games and keys:** dumps of games you own, and the `prod.keys` from your own
 > console.
 
 ## 1. Make the files
 
+Use `build.exe`, or Python if you prefer. Both make the same files: they download a few parts from
+their authors and check every file.
+
+**With `build.exe` (Windows):**
+
 1. From the [latest release](../../releases/latest), download **`build.exe`** and **`seedswap.nro`**
    into one folder.
-2. Double-click **`build.exe`**. It downloads a few parts from their authors and checks every file.
-   - If Windows warns about an unknown app, click **More info → Run anyway**.
-   - **Mac or Linux:** download this repository, put `seedswap.nro` in it, and run
-     `python3 build.py --nro seedswap.nro`.
+2. Double-click **`build.exe`**. If Windows warns about an unknown app, click **More info → Run
+   anyway**.
 
-You get an `out` folder:
+**With Python (any PC, Python 3.8 or newer):**
+
+1. From the [latest release](../../releases/latest), download **`seedswap.nro`** and **Source code
+   (zip)**.
+2. Unzip the source code, and put `seedswap.nro` in that folder.
+3. Open a terminal there and run `python3 build.py --nro seedswap.nro`. On Windows, use `py` in place
+   of `python3`.
+
+Either way, you get an `out` folder:
 
 | Folder | What |
 |---|---|
@@ -99,7 +110,7 @@ Each game keeps its own save.
 ## Updating
 
 - **New SeedSwap:** copy the new `seedswap.nro` to `SD:/switch/seedswap.nro`.
-- **New SD files or save:** run the new `build.exe`, then repeat steps 2 and 3.
+- **New SD files or save:** do step 1 again with the new release, then repeat steps 2 and 3.
 
 Don't install system updates: kaiHEN needs firmware 23.0.1.
 

@@ -22,7 +22,8 @@ Needs firmware 23.0.1 and kaiHEN.
 
 ## Get started
 
-1. Download `build.exe` and `seedswap.nro` from the [latest release](../../releases/latest).
+1. Download `build.exe` and `seedswap.nro` from the [latest release](../../releases/latest). Without
+   Windows, use Python instead of `build.exe`.
 2. Follow **[INSTALL.md](INSTALL.md)**.
 
 > **Use only your own games and keys.** This repository has neither. Don't download them.
