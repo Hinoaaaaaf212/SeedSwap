@@ -213,7 +213,7 @@ static void compat_text(const Game *g, char *out, size_t n, Color *c) {
         snprintf(out, n, "%d not applied yet: press X", ci->changes);
         *c = C_WARN;
         break;
-    case COMPAT_ST_NO_PATCHER: snprintf(out, n, "Patcher file missing: press X"); *c = C_WARN; break;
+    case COMPAT_ST_NO_PATCHER: snprintf(out, n, "Patcher not copied yet: press X"); *c = C_WARN; break;
     case COMPAT_ST_FAILED: snprintf(out, n, "Failed: %s", ci->note); *c = C_BAD; break;
     default: snprintf(out, n, "Not checked yet: press X"); *c = C_DIM; break;
     }
@@ -1016,9 +1016,12 @@ static void library_compat(void) {
         return;
     }
     if (!L->patcher_present) {
-        message(C_WARN, "Patcher file missing", "Nintendo's patcher isn't on the SD card (SD:" COMPAT_PATCHER "). "
-                "Run compat_sd.py --provision on the PC to copy it from your system dump.");
-        return;
+        char err[200];
+        if (!compat_ensure_patcher(false, err, sizeof(err))) {
+            message(C_WARN, "Can't get Nintendo's patcher", "SeedSwap copies it from the console's system. %s", err);
+            return;
+        }
+        L->patcher_present = true;
     }
     U.act = ACT_COMPAT;
     U.act_arg = i;

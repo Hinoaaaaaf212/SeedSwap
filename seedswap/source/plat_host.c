@@ -436,3 +436,33 @@ int apps_list(AppEntry *out, int max) {
     }
     return n;
 }
+
+// ---- Nintendo's compatibility patcher: in the preview, a file named by SEEDSWAP_SYSTEM_PATCHER
+// stands in for the console's system (unset: the system has none to give, as on a console
+// where kaiHEN gives no access). SEEDSWAP_SYSTEM_PATCHER_FAIL=<text> fails with that text.
+int plat_read_system_patcher(uint8_t **out, size_t *size, char *err, size_t errn) {
+    *out = NULL;
+    *size = 0;
+    const char *fail = getenv("SEEDSWAP_SYSTEM_PATCHER_FAIL");
+    const char *p = getenv("SEEDSWAP_SYSTEM_PATCHER");
+    if (fail || !p) {
+        snprintf(err, errn, "%s", fail ? fail : "kaiHEN didn't give SeedSwap access to the system files (preview).");
+        return -1;
+    }
+    FILE *f = fopen(p, "rb");
+    if (!f) { snprintf(err, errn, "The system's patcher couldn't be opened (preview: %s).", p); return -1; }
+    fseek(f, 0, SEEK_END);
+    long n = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    uint8_t *buf = n > 0 ? malloc((size_t)n) : NULL;
+    if (!buf || fread(buf, 1, (size_t)n, f) != (size_t)n) {
+        fclose(f);
+        free(buf);
+        snprintf(err, errn, "The system's patcher couldn't be read (preview).");
+        return -1;
+    }
+    fclose(f);
+    *out = buf;
+    *size = (size_t)n;
+    return 0;
+}

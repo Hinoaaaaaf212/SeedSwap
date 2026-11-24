@@ -267,6 +267,17 @@ static int collect(A64 *cpu, Run *run, CmptResult *result, int undo_only) {
     return CMPT_OK;
 }
 
+int cmpt_known_patcher(const uint8_t *patcher_file, size_t patcher_size, char *version, size_t version_size) {
+    uint8_t digest[32];
+    sha256(patcher_file, patcher_size, digest);
+    for (size_t i = 0; i < sizeof(PATCHERS) / sizeof(PATCHERS[0]); i++)
+        if (!memcmp(digest, PATCHERS[i].sha256, 32)) {
+            if (version && version_size) snprintf(version, version_size, "%s", PATCHERS[i].version);
+            return 1;
+        }
+    return 0;
+}
+
 int cmpt_run(const uint8_t *patcher_file, size_t patcher_size, uint64_t program_id, int is64, CmptModule *main,
              CmptModule *second, CmptResult *result) {
     return cmpt_run_poked(patcher_file, patcher_size, program_id, is64, main, second, NULL, 0, result);

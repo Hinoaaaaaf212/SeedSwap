@@ -62,5 +62,8 @@ int cmpt_run_poked(const uint8_t *patcher_file, size_t patcher_size, uint64_t pr
                    CmptModule *second, const uint32_t *pokes, size_t poke_count, CmptResult *result);
 void cmpt_free(CmptResult *result);
 const char *cmpt_status_text(int status);
+/* Whether this is a build of cmptldr's main that the engine knows (by SHA-256); version gets its
+ * system version ("23.0.1") when it is. */
+int cmpt_known_patcher(const uint8_t *patcher_file, size_t patcher_size, char *version, size_t version_size);
 
 #endif

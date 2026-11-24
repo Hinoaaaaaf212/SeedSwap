@@ -9,6 +9,7 @@
 #include <string.h>
 #include <time.h>
 #include <switch.h>
+#include <kaihen.h>
 
 static Framebuffer g_fb;
 static Canvas g_canvas;
@@ -410,4 +411,94 @@ int apps_list(AppEntry *out, int max) {
     free(cd);
     nsExit();
     return n;
+}
+
+// ---- Nintendo's compatibility patcher, from the console's own system
+// kaiHEN gives every libounce program a clone of Loader's fsp-ldr root: as the program's "fsp-ldr"
+// override, and through HEN's command 23 (GetLoaderRoot). Its command 0, OpenCodeFileSystem, opens a
+// program's code the way Loader does when it starts that program; kaiHEN reads game policies the
+// same way (common/policy_package.cpp). Nothing is written.
+#define CMPTLDR_PROGRAM 0x0400000000000052ULL
+#define HEN_GET_LOADER_ROOT 23
+#define PATCHER_MAX (16u << 20)
+
+static Result open_loader_root(Service *out, bool *owned) {
+    *owned = false;
+    Handle h = smGetServiceOverride(smEncodeName("fsp-ldr"));
+    if (h != INVALID_HANDLE) {
+        serviceCreate(out, h);
+        out->own_handle = 0;   // the override belongs to hbloader's setup: never close it
+        return 0;
+    }
+    Service ro, hen;
+    Result rc = kaihenGetRoSession(&ro);
+    if (R_SUCCEEDED(rc)) rc = kaihenOpenHomebrewSession(&ro, &hen);
+    if (R_FAILED(rc)) return rc;
+    h = INVALID_HANDLE;
+    rc = serviceDispatch(&hen, HEN_GET_LOADER_ROOT,
+        .out_handle_attrs = {SfOutHandleAttr_HipcCopy},
+        .out_handles = &h);
+    serviceClose(&hen);
+    if (R_FAILED(rc)) return rc;
+    serviceCreate(out, h);
+    *owned = true;
+    return 0;
+}
+
+int plat_read_system_patcher(uint8_t **out, size_t *size, char *err, size_t errn) {
+    *out = NULL;
+    *size = 0;
+    Service ldr;
+    bool owned = false;
+    Result rc = open_loader_root(&ldr, &owned);
+    if (R_FAILED(rc)) {
+        snprintf(err, errn, "kaiHEN didn't give SeedSwap access to the system files (0x%x).", rc);
+        return -1;
+    }
+    const struct {
+        u8 attributes;
+        u8 storage_id;
+        u64 program_id;
+    } in = {1, NcmStorageId_BuiltInSystem, CMPTLDR_PROGRAM};
+    static u8 code_info[0x1a4];
+    FsFileSystem code;
+    memset(&code, 0, sizeof(code));
+    rc = serviceDispatchIn(&ldr, 0, in,
+        .buffer_attrs = {SfBufferAttr_HipcMapAlias | SfBufferAttr_Out},
+        .buffers = {{code_info, sizeof(code_info)}},
+        .out_num_objects = 1,
+        .out_objects = &code.s);
+    if (owned) serviceClose(&ldr);
+    if (R_FAILED(rc)) {
+        snprintf(err, errn, "The system's patcher couldn't be opened (0x%x).", rc);
+        return -1;
+    }
+    FsFile f;
+    rc = fsFsOpenFile(&code, "/main", FsOpenMode_Read, &f);
+    if (R_FAILED(rc)) {
+        fsFsClose(&code);
+        snprintf(err, errn, "The system's patcher has no readable main (0x%x).", rc);
+        return -1;
+    }
+    s64 fsize = 0;
+    rc = fsFileGetSize(&f, &fsize);
+    uint8_t *buf = NULL;
+    if (R_SUCCEEDED(rc) && fsize > 0x100 && fsize <= (s64)PATCHER_MAX) buf = malloc((size_t)fsize);
+    size_t done = 0;
+    while (buf && R_SUCCEEDED(rc) && done < (size_t)fsize) {
+        u64 got = 0;
+        rc = fsFileRead(&f, done, buf + done, (size_t)fsize - done, FsReadOption_None, &got);
+        if (R_SUCCEEDED(rc) && got == 0) rc = MAKERESULT(Module_Libnx, LibnxError_IoError);
+        done += got;
+    }
+    fsFileClose(&f);
+    fsFsClose(&code);
+    if (!buf || R_FAILED(rc) || done != (size_t)fsize) {
+        free(buf);
+        snprintf(err, errn, "The system's patcher couldn't be read (0x%x, %lld bytes).", rc, (long long)fsize);
+        return -1;
+    }
+    *out = buf;
+    *size = done;
+    return 0;
 }

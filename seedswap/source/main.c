@@ -6,6 +6,7 @@
 // to SD:/switch/seedswap.nro. Saves are only ever written for the play user;
 // the users the loader protects (and the others in users.h) are refused in
 // users.c and again in the platform layer.
+#include "compat_game.h"
 #include "gfx.h"
 #include "platform.h"
 #include "ui.h"
@@ -14,6 +15,9 @@
 int main(void) {
     if (!plat_init()) return 1;
     app_log("SeedSwap %s started", SEEDSWAP_VERSION);
+    // Nintendo's patcher: copied from the system once, so the patch features work without a PC
+    char err[200];
+    compat_ensure_patcher(true, err, sizeof(err));
     ui_init();
     while (plat_loop()) {
         if (!ui_input(plat_buttons_down())) break;

@@ -1057,11 +1057,14 @@ bool hosts_patch_check(const char *exefs_path, const char *game_dir, uint64_t ho
     }
     void *patcher = NULL;
     size_t patcher_size = 0;
-    if (!read_blob(VFS_SD, COMPAT_PATCHER, 64u << 20, &patcher, &patcher_size)) {
+    char why[200] = "";
+    if (!compat_ensure_patcher(false, why, sizeof(why)) ||
+        !read_blob(VFS_SD, COMPAT_PATCHER, 64u << 20, &patcher, &patcher_size)) {
         free(ini);
         free(main_file);
-        return say(err, errn, "Nintendo's patcher isn't on the SD card, so SeedSwap can't tell whether this host's own "
-                   "patches would hit the game. Run compat_sd.py --provision on the PC.");
+        snprintf(err, errn, "SeedSwap can't tell whether this host's own patches would hit the game: it couldn't get "
+                 "Nintendo's patcher from the console's system. %s", why);
+        return false;
     }
     if (cb) cb(0.05f, "Checking the host's patches against the game (this can take a minute)…");
     CompatReport report;

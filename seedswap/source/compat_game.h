@@ -8,9 +8,12 @@
 #pragma once
 #include "util.h"
 
-// The system patcher: the `main` file of system program 0400000000000052 (cmptldr), from the user's
-// own console. Without it SeedSwap applies nothing.
+// The system patcher: the `main` file of system program 0400000000000052 (cmptldr), copied from the
+// console's own system by compat_ensure_patcher. Without it SeedSwap applies nothing.
 #define COMPAT_PATCHER SS_ROOT "/system/cmptldr.nso"
+// Present while a copy is under way: a copy that never finished (SeedSwap closed or crashed) is not
+// tried again at start, only when asked for.
+#define COMPAT_PATCHER_TRY SS_ROOT "/system/cmptldr.try"
 // The game image as it was before patching, kept once per game in its SeedSwap folder.
 #define COMPAT_ORIGINAL "exefs-nocompat.nsp"
 
@@ -33,6 +36,10 @@ typedef struct {
 } CompatInfo;
 
 bool compat_patcher_present(void);
+// Copies the patcher from the console's system to COMPAT_PATCHER if it isn't there yet: read through
+// Loader (plat_read_system_patcher), checked to be a build SeedSwap knows, written beside, read back
+// and renamed into place. at_start: skip it if an earlier copy never finished. true = it is there.
+bool compat_ensure_patcher(bool at_start, char *err, size_t errn);
 // What is recorded for a game, if it still describes the exefs.nsp at exefs_path. Cheap.
 void compat_load(const char *exefs_path, const char *game_dir, CompatInfo *out);
 // Runs the patcher on the game. With apply, a game that needs patches gets them: the new image is

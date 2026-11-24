@@ -24,6 +24,62 @@ static void hex16(const uint8_t *digest, char out[17]) {
         snprintf(out + 2 * i, 3, "%02x", digest[i]);
 }
 
+bool compat_ensure_patcher(bool at_start, char *err, size_t errn) {
+    if (compat_patcher_present()) return true;
+    bool dir = false;
+    int64_t size = 0;
+    if (at_start && vfs_stat(VFS_SD, COMPAT_PATCHER_TRY, &dir, &size) == 0) {
+        snprintf(err, errn, "An earlier copy of the system's patcher didn't finish.");
+        return false;
+    }
+    vfs_delete(VFS_SD, COMPAT_PATCHER_TRY);   // a stale one, when asked for
+    if (!mkdirs(VFS_SD, SS_ROOT "/system") || vfs_create(VFS_SD, COMPAT_PATCHER_TRY, 0) != 0) {
+        snprintf(err, errn, "SD:%s/system can't be written (%s).", SS_ROOT, vfs_last_error());
+        return false;
+    }
+    uint8_t *data = NULL;
+    size_t n = 0;
+    int got = plat_read_system_patcher(&data, &n, err, errn);
+    vfs_delete(VFS_SD, COMPAT_PATCHER_TRY);
+    if (got != 0) {
+        app_log("patcher copy: %s", err);
+        return false;
+    }
+    char version[16] = "";
+    if (!cmpt_known_patcher(data, n, version, sizeof(version))) {
+        uint8_t digest[32];
+        char hex[17];
+        sha256(data, n, digest);
+        hex16(digest, hex);
+        free(data);
+        snprintf(err, errn, "SeedSwap doesn't know this system version's patcher yet (%s).", hex);
+        app_log("patcher copy: unknown build %s, %zu bytes", hex, n);
+        return false;
+    }
+    // write beside, read back, then rename into place
+    const char *part = SS_ROOT "/system/cmptldr.nso.part";
+    vfs_delete(VFS_SD, part);
+    bool ok = false;
+    VfsFile *f = vfs_create(VFS_SD, part, (int64_t)n) == 0 ? vfs_open(VFS_SD, part, true) : NULL;
+    if (f) {
+        ok = vfs_write(f, 0, data, n) == 0 && vfs_flush(f) == 0;
+        vfs_close(f);
+    }
+    void *back = NULL;
+    size_t back_n = 0;
+    ok = ok && read_blob(VFS_SD, part, n + 1, &back, &back_n) && back_n == n && !memcmp(back, data, n);
+    free(back);
+    free(data);
+    if (!ok || vfs_rename(VFS_SD, part, COMPAT_PATCHER) != 0) {
+        vfs_delete(VFS_SD, part);
+        snprintf(err, errn, "The patcher couldn't be written to the SD card (%s).", vfs_last_error());
+        app_log("patcher copy: %s", err);
+        return false;
+    }
+    app_log("patcher copy: system %s patcher written to SD:%s (%zu bytes)", version, COMPAT_PATCHER, n);
+    return true;
+}
+
 static bool read_at(VfsFile *f, int64_t off, void *buf, size_t n) {
     size_t got = 0;
     return vfs_read(f, off, buf, n, &got) == 0 && got == n;

@@ -90,3 +90,8 @@ bool user_name(const Uid *uid, char *out, size_t n);  // profile nickname, false
 // above 0 = another (Switch 2), -1 = not known (the PC preview: SEEDSWAP_SWITCH2 lists Switch 2 IDs).
 typedef struct { uint64_t id; char name[64]; int platform; } AppEntry;
 int apps_list(AppEntry *out, int max);
+
+// The `main` file of system program 0400000000000052 (cmptldr, Nintendo's compatibility patcher),
+// read from the console's own system the way Loader reads it to start the program. Read-only.
+// 0 = *out holds *size bytes (caller frees); -1 = err says why.
+int plat_read_system_patcher(uint8_t **out, size_t *size, char *err, size_t errn);
