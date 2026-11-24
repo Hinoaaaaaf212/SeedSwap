@@ -1,9 +1,9 @@
 # Installing SeedSwap
 
 > [!WARNING]
-> **SeedSwap can brick your console.** It runs on the same base as seedsow-semi-untethered and uses
-> the same Seedsow file system code (Seedsow FS). Anything that can go wrong there can go wrong here
-> too, including a brick. Use it at your own risk.
+> **SeedSwap can brick your console.** It's rare, but it can happen. SeedSwap runs on the same base
+> as seedsow-semi-untethered and uses the same Seedsow file system code (Seedsow FS), so anything that
+> can go wrong there can go wrong here too. Use it at your own risk.
 
 There are five parts:
 1. Build the files on a PC.
