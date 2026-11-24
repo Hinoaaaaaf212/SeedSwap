@@ -6,7 +6,7 @@ $(error "Please set DEVKITPRO in your environment")
 endif
 
 TARGET := seedswap
-VERSION := 0.13.0
+VERSION := 0.13.1
 BUILD := build
 PREFIX := $(DEVKITPRO)/devkitA64/bin/aarch64-none-elf-
 include $(DEVKITPRO)/libounce/switch2_cpu.mk
@@ -32,9 +32,10 @@ HEADERS := $(wildcard source/*.h) $(wildcard source/compat/*.h)
 $(BUILD)/%.o: source/%.c $(HEADERS) | $(BUILD)
 	$(PREFIX)gcc $(CFLAGS) -c $< -o $@
 
-# the patch engine (source/compat): plain C, the same files the PC tests build
+# the patch engine (source/compat): plain C, the same files the PC tests build. -O3: the interpreter
+# runs about a billion instructions for a big game.
 $(BUILD)/compat_%.o: source/compat/%.c $(HEADERS) | $(BUILD)
-	$(PREFIX)gcc $(CFLAGS) -c $< -o $@
+	$(PREFIX)gcc $(CFLAGS) -O3 -c $< -o $@
 
 # third-party decoder: no -Werror
 $(BUILD)/stb_impl.o: source/stb_impl.c source/stb_cfg.h | $(BUILD)

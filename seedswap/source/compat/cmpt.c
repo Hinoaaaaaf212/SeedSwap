@@ -69,6 +69,7 @@ const char *cmpt_status_text(int status) {
     case CMPT_ENGINE_ERROR: return "the patcher could not be run";
     case CMPT_PATCHER_FAILED: return "the patcher reported an error";
     case CMPT_TOO_MANY_CHANGES: return "the patcher changed more than SeedSwap can record";
+    case CMPT_STOPPED: return "stopped before it finished";
     default: return "unknown";
     }
 }
@@ -146,7 +147,38 @@ typedef struct Run {
     const Patcher *patcher;
     uint32_t island_target[MAX_ISLANDS];
     char note[96];
+    /* The windows the patcher mapped, to turn the guest's latest read into how far it got. */
+    struct { uint64_t local, size, offset; int module; } maps[16];
+    int map_count;
+    float frac;
 } Run;
+
+static CmptProgress g_progress;
+static void *g_progress_user;
+
+void cmpt_set_progress(CmptProgress fn, void *user) {
+    g_progress = fn;
+    g_progress_user = user;
+}
+
+/* Every A64_TICK_STEPS instructions: cmptldr reads the game's image from start to end, word by
+ * word, so the position of its latest read is how far it has got. */
+static int on_tick(A64 *cpu, void *user) {
+    Run *run = user;
+    uint64_t total = run->modules[0]->image_size + (run->modules[1] ? run->modules[1]->image_size : 0);
+    uint64_t a = cpu->last_load;
+    for (int i = 0; i < run->map_count && total; i++) {
+        if (a - run->maps[i].local >= run->maps[i].size)
+            continue;
+        uint64_t pos = (run->maps[i].module ? run->modules[0]->image_size : 0) + run->maps[i].offset +
+                       (a - run->maps[i].local);
+        float f = (float)pos / (float)total;
+        if (f > run->frac)
+            run->frac = f > 1.f ? 1.f : f;
+        break;
+    }
+    return g_progress ? g_progress(g_progress_user, run->frac, cpu->steps) : 0;
+}
 
 static int on_svc(A64 *cpu, uint32_t number, void *user) {
     Run *run = user;
@@ -174,6 +206,13 @@ static int on_svc(A64 *cpu, uint32_t number, void *user) {
             run->next_local += ((size + 0x1fffff) & ~0x1fffffull) + 0x200000;
             if (a64_map(cpu, local, size, m->image + offset, 1, 1, i) < 0)
                 return A64_ERR_REGIONS;
+            if (run->map_count < (int)(sizeof(run->maps) / sizeof(run->maps[0]))) {
+                run->maps[run->map_count].local = local;
+                run->maps[run->map_count].size = size;
+                run->maps[run->map_count].offset = offset;
+                run->maps[run->map_count].module = i;
+                run->map_count++;
+            }
             uint8_t *out = a64_pointer(cpu, cpu->x[0], 8, 1);
             if (!out)
                 return A64_ERR_MEMORY;
@@ -349,7 +388,15 @@ int cmpt_run_poked(const uint8_t *patcher_file, size_t patcher_size, uint64_t pr
 
     a64_init(cpu);
     cpu->svc = on_svc;
+    cpu->tick = on_tick;
     cpu->user = &run;
+    {   /* cmptldr spends about 100 instructions per 4-byte word of the game (Super Mario Odyssey:
+         * 0.9 billion for 39.5 MB). Far beyond that it is stuck, not slow: stop it. */
+        uint64_t words = (main->image_size + (second ? second->image_size : 0)) / 4;
+        uint64_t cap = words * 1000 > ((uint64_t)1 << 30) ? words * 1000 : (uint64_t)1 << 30;
+        if (cap < cpu->max_steps)
+            cpu->max_steps = cap;
+    }
     cpu->writes = writes;
     cpu->write_capacity = MAX_WRITES;
     cpu->tpidrro_el0 = TLS_BASE;
@@ -393,7 +440,11 @@ int cmpt_run_poked(const uint8_t *patcher_file, size_t patcher_size, uint64_t pr
     result->routine = run.routine;
     result->patcher_result = (uint32_t)cpu->x[0];
 
-    if (rc != A64_HALT) {
+    if (rc == A64_ERR_STOPPED) {
+        status = CMPT_STOPPED;
+        snprintf(result->message, sizeof(result->message), "%s", cmpt_status_text(status));
+        collect(cpu, &run, result, 1);
+    } else if (rc != A64_HALT) {
         status = CMPT_ENGINE_ERROR;
         snprintf(result->message, sizeof(result->message), "%s at cmptldr+0x%llx (instruction %08x, address 0x%llx)%s%s",
                  a64_error_text(rc), (unsigned long long)(cpu->fault_pc - CODE_BASE), cpu->fault_instruction,

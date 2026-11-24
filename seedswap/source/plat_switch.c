@@ -64,8 +64,10 @@ static uint64_t map_buttons(uint64_t b) {
     return o;
 }
 
+static bool g_exit;   // the system asked the app to close (seen once by appletMainLoop)
+
 bool plat_loop(void) {
-    if (!appletMainLoop()) return false;
+    if (g_exit || !appletMainLoop()) return false;
     padUpdate(&g_pad);
     g_down = map_buttons(padGetButtonsDown(&g_pad));
     g_held = map_buttons(padGetButtons(&g_pad));
@@ -81,6 +83,15 @@ uint64_t plat_buttons_held(void) { return g_held; }
 uint64_t plat_ms(void) { return armTicksToNs(armGetSystemTick()) / 1000000ULL; }
 void plat_sleep_ms(int ms) { svcSleepThread((s64)ms * 1000000LL); }
 void plat_keep_awake(bool on) { (void)appletSetAutoSleepDisabled(on); }  // best effort: an error changes nothing
+
+bool plat_poll_stop(void) {
+    if (g_exit || !appletMainLoop()) {
+        g_exit = true;
+        return true;
+    }
+    padUpdate(&g_pad);
+    return (padGetButtonsDown(&g_pad) & HidNpadButton_B) != 0;
+}
 
 bool plat_now(char *out, size_t n, bool compact) {
     time_t t = time(NULL);

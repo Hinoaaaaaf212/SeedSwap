@@ -18,8 +18,12 @@ enum {
     A64_ERR_MEMORY,      /* an access outside every region, or a write to a read-only one */
     A64_ERR_STEPS,       /* more instructions than max_steps */
     A64_ERR_SVC,         /* the svc handler refused the call */
-    A64_ERR_REGIONS      /* no room for another region */
+    A64_ERR_REGIONS,     /* no room for another region */
+    A64_ERR_STOPPED      /* the tick callback asked to stop */
 };
+
+/* How often a64_run calls cpu->tick, in instructions (a power of two). */
+#define A64_TICK_STEPS (1u << 22)
 
 typedef struct A64Region {
     uint64_t base;
@@ -59,8 +63,11 @@ typedef struct A64 {
 
     A64Svc svc;
     void *user;
+    /* Called every A64_TICK_STEPS instructions when set; nonzero stops the run (A64_ERR_STOPPED). */
+    int (*tick)(struct A64 *cpu, void *user);
 
     uint64_t steps, max_steps;
+    uint64_t last_load;      /* guest address of the latest data load */
     uint64_t fault_address;  /* for A64_ERR_MEMORY */
     uint64_t fault_pc;
     uint32_t fault_instruction;

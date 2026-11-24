@@ -24,6 +24,39 @@ static void hex16(const uint8_t *digest, char out[17]) {
         snprintf(out + 2 * i, 3, "%02x", digest[i]);
 }
 
+// ---- while the patcher runs: the progress bar, the time so far, and B to stop it
+static struct {
+    ProgressFn cb;
+    float from, to;
+    uint64_t start;
+} g_watch;
+
+static int watch_tick(void *user, float frac, uint64_t steps) {
+    (void)user;
+    (void)steps;
+    if (g_watch.cb) {
+        unsigned s = (unsigned)((plat_ms() - g_watch.start) / 1000);
+        char text[96];
+        snprintf(text, sizeof(text), "Nintendo's patcher is running: %u:%02u. B stops it.", s / 60, s % 60);
+        g_watch.cb(g_watch.from + (g_watch.to - g_watch.from) * frac, text);
+    }
+    return plat_poll_stop() ? 1 : 0;
+}
+
+void compat_watch_begin(ProgressFn cb, float from, float to) {
+    g_watch.cb = cb;
+    g_watch.from = from;
+    g_watch.to = to;
+    g_watch.start = plat_ms();
+    watch_tick(NULL, 0.f, 0);
+    cmpt_set_progress(watch_tick, NULL);
+}
+
+void compat_watch_end(void) {
+    cmpt_set_progress(NULL, NULL);
+    g_watch.cb = NULL;
+}
+
 bool compat_ensure_patcher(bool at_start, char *err, size_t errn) {
     if (compat_patcher_present()) return true;
     bool dir = false;
@@ -324,12 +357,20 @@ bool compat_run(const char *exefs_path, const char *game_dir, uint64_t program_i
         if (cb) cb(0.1f * (float)done / (float)main_size, "Reading the game's code…");
     }
 
-    if (cb) cb(0.12f, "Running the console's patcher on the game (this can take a minute)…");
     CompatReport report;
+    uint64_t t0 = plat_ms();
+    compat_watch_begin(cb, 0.12f, 0.34f);
     int status = compat_patch_main(patcher, patcher_size, main_file, main_size, program_id, apply, &new_main,
                                    &new_main_size, &report);
+    compat_watch_end();
+    app_log("Nintendo patches: the patcher ran %llu instructions in %.1f s",
+            (unsigned long long)report.steps, (double)(plat_ms() - t0) / 1000.0);
     out->width = report.width;
     snprintf(out->version, sizeof(out->version), "%s", report.version);
+    if (status == CMPT_STOPPED) {
+        stop(out, game_dir, key, err, errn, "You stopped Nintendo's patcher. Press X on the game to run it again.");
+        goto done;
+    }
     if (status != CMPT_OK) {
         char what[260];
         snprintf(what, sizeof(what), "%s%s%s", compat_status_text(status), report.message[0] ? ": " : "", report.message);

@@ -38,8 +38,15 @@ enum {
     CMPT_NO_MEMORY,
     CMPT_ENGINE_ERROR,      /* the interpreter stopped; see message */
     CMPT_PATCHER_FAILED,    /* cmptldr itself returned an error */
-    CMPT_TOO_MANY_CHANGES
+    CMPT_TOO_MANY_CHANGES,
+    CMPT_STOPPED            /* the progress callback asked to stop */
 };
+
+/* Called about every 4 million interpreted instructions during cmpt_run: frac is how far cmptldr has
+ * read through the game (0..1), steps the instructions so far. Nonzero stops the run (CMPT_STOPPED,
+ * images restored). One callback for all runs; NULL for none. */
+typedef int (*CmptProgress)(void *user, float frac, uint64_t steps);
+void cmpt_set_progress(CmptProgress fn, void *user);
 
 typedef struct CmptResult {
     int status;

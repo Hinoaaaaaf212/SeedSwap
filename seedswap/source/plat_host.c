@@ -84,6 +84,8 @@ uint64_t plat_buttons_held(void) { return 0; }
 uint64_t plat_ms(void) { return g_frames * 16; }
 void plat_sleep_ms(int ms) { (void)ms; }
 void plat_keep_awake(bool on) { (void)on; }
+// SEEDSWAP_STOP_PATCHER set: B is "pressed" during every long job that can be stopped.
+bool plat_poll_stop(void) { return getenv("SEEDSWAP_STOP_PATCHER") != NULL; }
 
 bool plat_now(char *out, size_t n, bool compact) {
     const char *fixed = getenv("SEEDSWAP_TIME");

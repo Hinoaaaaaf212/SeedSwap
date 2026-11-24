@@ -39,6 +39,7 @@ const char *a64_error_text(int code) {
     case A64_ERR_STEPS: return "too many instructions";
     case A64_ERR_SVC: return "unexpected system call";
     case A64_ERR_REGIONS: return "too many memory regions";
+    case A64_ERR_STOPPED: return "stopped";
     default: return "unknown error";
     }
 }
@@ -77,6 +78,7 @@ static int load(A64 *cpu, uint64_t address, unsigned size, uint64_t *out) {
     for (unsigned i = 0; i < size; i++)
         v |= (uint64_t)p[i] << (8 * i);
     *out = v;
+    cpu->last_load = address;
     return A64_OK;
 }
 
@@ -851,6 +853,10 @@ int a64_run(A64 *cpu) {
         if (++cpu->steps > cpu->max_steps) {
             cpu->fault_pc = cpu->pc;
             return A64_ERR_STEPS;
+        }
+        if (!(cpu->steps & (A64_TICK_STEPS - 1)) && cpu->tick && cpu->tick(cpu, cpu->user)) {
+            cpu->fault_pc = cpu->pc;
+            return A64_ERR_STOPPED;
         }
         switch ((in >> 25) & 15) {
         case 8:

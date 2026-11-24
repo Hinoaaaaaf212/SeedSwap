@@ -40,6 +40,10 @@ bool compat_patcher_present(void);
 // Loader (plat_read_system_patcher), checked to be a build SeedSwap knows, written beside, read back
 // and renamed into place. at_start: skip it if an earlier copy never finished. true = it is there.
 bool compat_ensure_patcher(bool at_start, char *err, size_t errn);
+// Around a run of the patcher: cb gets from..to as it reads through the game, with the time so far;
+// B stops it (plat_poll_stop), and the run then ends with CMPT_STOPPED.
+void compat_watch_begin(ProgressFn cb, float from, float to);
+void compat_watch_end(void);
 // What is recorded for a game, if it still describes the exefs.nsp at exefs_path. Cheap.
 void compat_load(const char *exefs_path, const char *game_dir, CompatInfo *out);
 // Runs the patcher on the game. With apply, a game that needs patches gets them: the new image is

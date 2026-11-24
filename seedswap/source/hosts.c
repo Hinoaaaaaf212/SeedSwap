@@ -1066,11 +1066,12 @@ bool hosts_patch_check(const char *exefs_path, const char *game_dir, uint64_t ho
                  "Nintendo's patcher from the console's system. %s", why);
         return false;
     }
-    if (cb) cb(0.05f, "Checking the host's patches against the game (this can take a minute)…");
     CompatReport report;
     uint8_t *out = NULL;
     size_t out_size = 0;
+    compat_watch_begin(cb, 0.05f, 0.95f);
     int status = compat_patch_main(patcher, patcher_size, main_file, main_size, host, 0, &out, &out_size, &report);
+    compat_watch_end();
     free(out);
     free(patcher);
     free(main_file);

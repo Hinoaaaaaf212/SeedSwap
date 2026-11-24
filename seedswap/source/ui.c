@@ -214,7 +214,10 @@ static void compat_text(const Game *g, char *out, size_t n, Color *c) {
         *c = C_WARN;
         break;
     case COMPAT_ST_NO_PATCHER: snprintf(out, n, "Patcher not copied yet: press X"); *c = C_WARN; break;
-    case COMPAT_ST_FAILED: snprintf(out, n, "Failed: %s", ci->note); *c = C_BAD; break;
+    case COMPAT_ST_FAILED:
+        if (!strncmp(ci->note, "You stopped", 11)) { snprintf(out, n, "Stopped: press X to run again"); *c = C_WARN; }
+        else { snprintf(out, n, "Failed: %s", ci->note); *c = C_BAD; }
+        break;
     default: snprintf(out, n, "Not checked yet: press X"); *c = C_DIM; break;
     }
 }

@@ -26,6 +26,9 @@ uint64_t plat_buttons_held(void);
 uint64_t plat_ms(void);            // monotonic milliseconds
 void plat_sleep_ms(int ms);
 void plat_keep_awake(bool on);      // no auto-sleep while a long job (a conversion) runs
+// During a long job that can be stopped: keeps the system's HOME handling going and returns true
+// once B is pressed (or the app has to close).
+bool plat_poll_stop(void);
 bool plat_now(char *out, size_t n, bool compact);  // local time "2026-11-20 18:40" / "20261120T184000"
 
 enum {
