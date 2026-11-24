@@ -1,0 +1,28 @@
+# Builds the save from the pinned upstream sources and checks every file against SHA256SUMS.txt.
+# Nothing is uploaded: the built save holds alula's launcher files, which have no licence to
+# redistribute, so everyone builds their own copy with build.py.
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build and check
+        run: python3 build.py
+      - name: Summary
+        run: |
+          echo "save files: $(ls out/save | wc -l)"
+          sha256sum out/seedsow-seedswap-save.zip
+          grep seedsow-seedswap-save.zip SHA256SUMS.txt
