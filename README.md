@@ -5,6 +5,17 @@ another installed Switch 1 game.
 - It needs firmware 23.0.1 with kaiHEN.
 - You pick and switch games on the console.
 
+![SeedSwap's Library](images/library.png)
+
+| | |
+|---|---|
+| ![Switching to another game](images/switch-confirm.png) | ![Picking a host](images/hosts.png) |
+| ![Converting a dump on the console](images/convert.png) | ![Choosing the play user](images/play-user.png) |
+| ![Saves and backups](images/saves.png) | ![Setting up an installed game as a host](images/add-host.png) |
+
+These screenshots come from SeedSwap 0.12.0's PC preview, which runs the real UI. The users and user
+IDs in them are made up.
+
 This repository builds two things:
 - **The Seedsow save.** It holds alula's launcher, the seedsow-semi-untethered exploit chain, and
   SeedSwap's A/B launcher entries.
