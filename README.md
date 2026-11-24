@@ -49,7 +49,14 @@ for byte. It uploads only `seedswap.nro`.
 
 ## Install (firmware 23.0.1, kaiHEN on the SD card)
 
-**[INSTALL.md](INSTALL.md) has the full step-by-step guide**. In short:
+**[INSTALL.md](INSTALL.md) has the full step-by-step guide.** It also covers updating an existing
+seedsow-semi-untethered save over the network (`upload_save.py`).
+
+> **Use only your own games and keys.** Only play dumps of games you own, made yourself, and only use
+> the `prod.keys` from your own console. This repository has no games or keys; don't download them
+> from anywhere.
+
+In short:
 
 1. Copy `out/sd/` to the root of the SD card.
 2. Put the save on a spare user's Seedsow save with ns2jb + ns2-savekit (back up, then replace from
@@ -72,6 +79,7 @@ for byte. It uploads only `seedswap.nro`.
 
 | Folder | Contents |
 |---|---|
+| `upload_save.py` | Updates an existing seedsow-semi-untethered save over the launcher's HTTP server (see INSTALL.md). |
 | `save/` | Our files for the Seedsow save: the kaiHEN stage that starts the loader (`s2_kh_ro.lua`), the A/B menu, the A and B entries, their hardened copies, and B's two newer modules. |
 | `sd/` | The loader stage (`kaihen/s2_ml.lua`), `ml_image.lua`, `tpl.lua`, and the install image. The image has Seedsow plus 9 spare host slots. Its save guard is on nobody until you pick the play user. |
 | `seedswap/` | SeedSwap's source. |

@@ -3,7 +3,8 @@
 There are four parts:
 1. Build the files on a PC.
 2. Copy the SD card files.
-3. Put the Seedsow save on the console with ns2jb.
+3. Put the Seedsow save on the console: with ns2jb, or over the network if you already have
+   seedsow-semi-untethered.
 4. First run.
 
 It takes about half an hour the first time.
@@ -21,6 +22,11 @@ It takes about half an hour the first time.
   it something like "Seedsow".
   - SeedSwap never plays games on this user, so don't use the one you play on.
 - A PC with **Python 3.8 or newer**.
+
+> **Use only your own games and keys.**
+> - Only play dumps of games you own, made yourself from your own cartridges or downloads.
+> - Only use the `prod.keys` dumped from your own console.
+> - Don't download games or keys from anywhere, and don't share yours. This repository has neither.
 
 ## 1. Build the files (on the PC)
 
@@ -91,9 +97,42 @@ Then write the save with ns2jb + ns2-savekit. You need a PC on the same network 
    - Only one save operation per console boot is always safe.
 8. Optional: after the next restart, choose **7) Verify** to check the save against what was written.
 
-### Already have the seedsow-semi-untethered save?
+### Already have the seedsow-semi-untethered save? Update it over the network instead
 
-Do the same steps anyway. They replace the old files and add the new ones.
+If any version of seedsow-semi-untethered already works on your console, you don't need ns2jb. Its
+launcher has an HTTP server (button **Y**) that can write files into the save. You also need FTP: any
+FTP server you can run after kaiHEN starts. You still need the PC and `build.py` from step 1.
+
+1. **Start kaiHEN the usual way:** Seedsow on the user with the exploit save, then **A**. Wait for
+   READY.
+2. **Copy the SD card files over FTP:** close Seedsow and start your FTP server. Copy everything
+   inside `out/sd/` to the root of the SD card, as in step 2.
+3. **Start the HTTP server:** start Seedsow again on the same user and press **Y** in the launcher. It
+   shows the console's IP address and port 8080.
+4. **Send the save files from the PC.** In the repository folder, run:
+
+       python3 upload_save.py SWITCH-IP
+
+   Use the IP address the launcher shows. The script:
+   - sends 24 files, one at a time, and checks each answer;
+   - sends the launcher menu, `inject2.lua`, last, so the new menu only appears when everything
+     else is in;
+   - leaves out the launcher's own protected files (the save already has them) and `seedswap.nro`
+     (too big for the server, and step 2 already put it on the SD card).
+
+   Add `--dry-run` to see the list without sending anything.
+5. **Check it:** close Seedsow fully (HOME → X → Close) and start it again. The menu should now say
+   **A : Run kaiHEN + modloader (hardened)**. Then go on with the first run, step 4 below.
+
+If the script stops partway, start Seedsow again, press Y, and run it again. It sends everything
+again. Files left over from your old version stay in the save, but nothing uses them.
+
+**Option B and the SD copy:** B copies SeedSwap from the save to the SD card. A save updated this way
+has no `seedswap.nro`, so B just says so and goes on. Update SeedSwap by copying the new
+`seedswap.nro` over FTP.
+
+**If anything still behaves like your old version,** use the ns2jb steps above. They write the whole
+save, including the files the HTTP server can't change.
 
 ### Don't update the console
 
@@ -113,7 +152,8 @@ consoles. kaiHEN needs firmware 23.0.1.
    - It finds the spare user by its save and never uses that user.
 5. **Choose who plays:** go to the **Saves** tab, press **Y**, and pick the user you play on. Then
    restart the console and run the launcher again (Seedsow → A).
-6. **Add games:** in the **Library**, press **-** and pick a host. That's Seedsow, or any installed
+6. **Add games:** use only your own dumps and your own console's `prod.keys` (see the warning at the
+   top). In the **Library**, press **-** and pick a host. That's Seedsow, or any installed
    Switch 1 game. Then pick a game and switch to it.
 
 Every time you turn the console on, run the launcher (Seedsow → A) on the spare user before playing.
