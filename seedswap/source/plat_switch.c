@@ -236,7 +236,9 @@ void save_set_title(uint64_t title) {
 
 uint64_t save_title(void) { return g_title; }
 
-int save_list_users(Uid *out, int max) {
+int save_list_users(Uid *out, int max) { return save_list_users_of(g_title, out, max); }
+
+int save_list_users_of(uint64_t title, Uid *out, int max) {
     FsSaveDataInfoReader reader;
     if (R_FAILED(fsOpenSaveDataInfoReader(&reader, FsSaveDataSpaceId_User))) return -1;
     int n = 0;
@@ -244,7 +246,7 @@ int save_list_users(Uid *out, int max) {
     s64 total = 0;
     while (R_SUCCEEDED(fsSaveDataInfoReaderRead(&reader, infos, 16, &total)) && total > 0) {
         for (s64 i = 0; i < total && n < max; i++) {
-            if (infos[i].application_id != g_title || infos[i].save_data_type != FsSaveDataType_Account) continue;
+            if (infos[i].application_id != title || infos[i].save_data_type != FsSaveDataType_Account) continue;
             memcpy(out[n++].b, &infos[i].uid, 16);
         }
     }
@@ -268,9 +270,9 @@ static bool never_open(const Uid *uid) {
     return !g_allowed_set || memcmp(g_allowed.b, uid->b, 16) != 0;
 }
 
-int save_find_files(const Uid *uid, const char *const *names, int n, char *found, size_t fn) {
+int save_find_files(uint64_t title, const Uid *uid, const char *const *names, int n, char *found, size_t fn) {
     FsSaveDataAttribute attr = {0};
-    attr.application_id = SEEDSOW_TITLE;
+    attr.application_id = title;
     memcpy(&attr.uid, uid->b, 16);
     attr.save_data_type = FsSaveDataType_Account;
     FsFileSystem fs;

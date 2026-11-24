@@ -10,7 +10,7 @@ About half an hour the first time.
 ## You need
 
 - A Switch 2 on **firmware 23.0.1**, with **[kaiHEN](https://github.com/ouncebrew/kaihen)** set up.
-- **Seedsow Lullaby** installed (the full game; the demo is untested).
+- **Seedsow Lullaby** installed: the full game or the demo.
 - **A spare user** for the exploit save (System Settings → Users → Add User). Don't play on it.
 - A PC: Windows for `build.exe`, or any PC with Python 3.8 or newer.
 

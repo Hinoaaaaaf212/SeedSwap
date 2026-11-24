@@ -59,18 +59,20 @@ const char *vfs_last_error(void);
 // ---- the account save of one user for the host title (Seedsow 0100ee5021c9e000 unless
 // save_set_title chose another host), mounted as VFS_SAVE
 #define SEEDSOW_TITLE 0x0100ee5021c9e000ULL
+#define SEEDSOW_DEMO_TITLE 0x010042d022aea000ULL  // the demo, which can hold the exploit save too
 // The title whose saves the calls below open (unmounts a save that is open). Seedsow until set.
 void save_set_title(uint64_t title);
 uint64_t save_title(void);
 typedef struct { uint8_t b[16]; } Uid;
 int save_list_users(Uid *out, int max);       // users that have an account save for the title
+int save_list_users_of(uint64_t title, Uid *out, int max);  // the same for another title (nothing unmounted)
 // The only user whose Seedsow save save_mount opens (NULL: none).
 void save_allow_only(const Uid *uid);
-// Whether a user's Seedsow save (always Seedsow's, whatever save_set_title chose) has one of these
+// Whether a user's save of `title` (Seedsow or its demo, whatever save_set_title chose) has one of these
 // files at its root: opened read-only, nothing read but whether the names exist, closed again. The one
 // look into a save that isn't the play user's: it finds the user with the exploit save (users.c).
 // 1 = found (found = the name), 0 = none of them, -1 = the save couldn't be opened.
-int save_find_files(const Uid *uid, const char *const *names, int n, char *found, size_t fn);
+int save_find_files(uint64_t title, const Uid *uid, const char *const *names, int n, char *found, size_t fn);
 int save_mount(const Uid *uid, bool write);
 int save_commit(void);
 void save_unmount(void);

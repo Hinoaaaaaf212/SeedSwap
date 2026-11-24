@@ -240,11 +240,13 @@ int64_t vfs_free_space(VfsRoot r) {
 static uint64_t g_title = SEEDSOW_TITLE;
 static char g_title_dir[600];
 
-static const char *saves_root(void) {
-    if (g_title == SEEDSOW_TITLE) return g_saves;
-    snprintf(g_title_dir, sizeof(g_title_dir), "%s/%016llx", g_saves, (unsigned long long)g_title);
-    return g_title_dir;
+static const char *saves_root_of(uint64_t title, char *buf, size_t n) {
+    if (title == SEEDSOW_TITLE) return g_saves;
+    snprintf(buf, n, "%s/%016llx", g_saves, (unsigned long long)title);
+    return buf;
 }
+
+static const char *saves_root(void) { return saves_root_of(g_title, g_title_dir, sizeof(g_title_dir)); }
 
 void save_set_title(uint64_t title) {
     if (title != g_title) save_unmount();
@@ -253,8 +255,11 @@ void save_set_title(uint64_t title) {
 
 uint64_t save_title(void) { return g_title; }
 
-int save_list_users(Uid *out, int max) {
-    DIR *d = opendir(saves_root());
+int save_list_users(Uid *out, int max) { return save_list_users_of(g_title, out, max); }
+
+int save_list_users_of(uint64_t title, Uid *out, int max) {
+    char root[600];
+    DIR *d = opendir(saves_root_of(title, root, sizeof(root)));
     if (!d) return -1;
     int n = 0;
     struct dirent *de;
@@ -280,18 +285,19 @@ void save_allow_only(const Uid *uid) {
     if (uid) g_allowed = *uid;
 }
 
-int save_find_files(const Uid *uid, const char *const *names, int n, char *found, size_t fn) {
-    char h[33], path[800];
+int save_find_files(uint64_t title, const Uid *uid, const char *const *names, int n, char *found, size_t fn) {
+    char h[33], path[800], buf[600];
+    const char *root = saves_root_of(title, buf, sizeof(buf));
     for (int i = 0; i < 16; i++) snprintf(h + i * 2, 3, "%02x", uid->b[i]);
     const char *locked = getenv("SEEDSWAP_SAVE_LOCKED");
     struct stat st;
-    snprintf(path, sizeof(path), "%s/%s", g_saves, h);
+    snprintf(path, sizeof(path), "%s/%s", root, h);
     if ((locked && strstr(locked, h)) || stat(path, &st) != 0) {
         snprintf(g_err, sizeof(g_err), "open save (read-only check) %s: can't", h);
         return -1;
     }
     for (int i = 0; i < n; i++) {
-        snprintf(path, sizeof(path), "%s/%s/%s", g_saves, h, names[i]);
+        snprintf(path, sizeof(path), "%s/%s/%s", root, h, names[i]);
         if (stat(path, &st) == 0 && S_ISREG(st.st_mode)) {
             if (found) snprintf(found, fn, "%s", names[i]);
             return 1;

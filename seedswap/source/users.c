@@ -87,33 +87,40 @@ static const char *refusal(const char *hex) {
     return NULL;
 }
 
-// The users whose Seedsow save holds the chain's files: looked for once per run while config.ini names
-// none, and written there (exploit_user), where the loader's install check reads it too. Each save is
-// only opened read-only to see whether the files exist (platform.h save_find_files).
+// The users whose Seedsow save (the full game's or the demo's) holds the chain's files: looked for once
+// per run while config.ini names none, and written there (exploit_user), where the loader's install check
+// reads it too. Each save is only opened read-only to see whether the files exist (platform.h
+// save_find_files).
 static void find_exploit(void) {
     static bool done;
     if (done || g_exploit[0]) return;
     done = true;
-    uint64_t title = save_title();
-    save_set_title(SEEDSOW_TITLE);
-    Uid users[USERS_MAX];
-    int n = save_list_users(users, USERS_MAX), unreadable = 0;
-    save_set_title(title);
+    static const struct {
+        uint64_t id;
+        const char *name;
+    } TITLES[] = {{SEEDSOW_TITLE, "Seedsow"}, {SEEDSOW_DEMO_TITLE, "Seedsow demo"}};
     char list[400] = "";
-    for (int i = 0; i < n; i++) {
-        char h[33], file[40];
-        uid_hex(&users[i], h);
-        int r = save_find_files(&users[i], CHAIN_FILES, (int)(sizeof(CHAIN_FILES) / sizeof(*CHAIN_FILES)), file, sizeof(file));
-        if (r < 0) {
-            unreadable++;
-            app_log("exploit check: %s's Seedsow save couldn't be opened: %s", h, vfs_last_error());
-        } else if (r == 1 && strlen(list) + 34 < sizeof(list)) {
-            snprintf(list + strlen(list), sizeof(list) - strlen(list), "%s%s", list[0] ? "," : "", h);
-            app_log("exploit check: %s's Seedsow save has %s, so it is never the play user", h, file);
+    int checked = 0, unreadable = 0;
+    for (size_t t = 0; t < sizeof(TITLES) / sizeof(*TITLES); t++) {
+        Uid users[USERS_MAX];
+        int n = save_list_users_of(TITLES[t].id, users, USERS_MAX);
+        for (int i = 0; i < n; i++) {
+            char h[33], file[40];
+            uid_hex(&users[i], h);
+            checked++;
+            int r = save_find_files(TITLES[t].id, &users[i], CHAIN_FILES, (int)(sizeof(CHAIN_FILES) / sizeof(*CHAIN_FILES)),
+                                    file, sizeof(file));
+            if (r < 0) {
+                unreadable++;
+                app_log("exploit check: %s's %s save couldn't be opened: %s", h, TITLES[t].name, vfs_last_error());
+            } else if (r == 1 && !strstr(list, h) && strlen(list) + 34 < sizeof(list)) {
+                snprintf(list + strlen(list), sizeof(list) - strlen(list), "%s%s", list[0] ? "," : "", h);
+                app_log("exploit check: %s's %s save has %s, so it is never the play user", h, TITLES[t].name, file);
+            }
         }
     }
     if (!list[0]) {
-        app_log("exploit check: no Seedsow save has the exploit's files (%d checked, %d couldn't be opened)", n < 0 ? 0 : n,
+        app_log("exploit check: no Seedsow save has the exploit's files (%d checked, %d couldn't be opened)", checked,
                 unreadable);
         return;
     }
