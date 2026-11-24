@@ -1,79 +1,93 @@
-# Seedsow save with SeedSwap
+# SeedSwap
 
-A Seedsow Lullaby save for Switch 2 on firmware 23.0.1. It holds:
-- alula's launcher (switch-artemis-launcher);
-- the seedsow-semi-untethered exploit chain;
-- SeedSwap's additions to the launcher.
+SeedSwap lets you play Switch 1 games on a Switch 2 by running them in place of Seedsow Lullaby or
+another installed Switch 1 game.
+- It needs firmware 23.0.1 with kaiHEN.
+- You pick and switch games on the console.
+
+This repository builds two things:
+- **The Seedsow save.** It holds alula's launcher, the seedsow-semi-untethered exploit chain, and
+  SeedSwap's A/B launcher entries.
+- **The SD card files.** These are SeedSwap itself, kaiHEN's loader stage, and the install image.
+
+## Build
+
+1. **Get SeedSwap (`seedswap.nro`).** GitHub Actions builds it from `seedswap/` on every push:
+   - Download the `seedswap-nro` artifact of a run.
+   - Or, when the repo has a `v*` tag, get it from that tag's release.
+   - Or build it yourself (see `seedswap/README.md`).
+2. **Build the rest** (needs Python 3.8 or newer):
+
+       python3 build.py --nro seedswap.nro
+
+   This writes:
+   - `out/save/`: the Seedsow save;
+   - `out/seedsow-seedswap-save.zip`: the same save as one zip;
+   - `out/sd/`: the SD card files.
+
+   It also downloads three parts at fixed commits and checks every file against `SHA256SUMS.txt`:
+   - alula's launcher files;
+   - the unchanged seedsow-semi-untethered modules;
+   - kurumuz's ns2jb RO helper.
+
+   The repository doesn't include these parts: alula's and kurumuz's repositories have no licence
+   file, so `build.py` downloads all three from their sources.
+
+The CI run does the same steps and checks the result. Its SeedSwap must match the tested build byte
+for byte. It uploads only `seedswap.nro`.
+
+## Install (firmware 23.0.1, kaiHEN on the SD card)
+
+1. Copy `out/sd/` to the root of the SD card.
+2. Put the save on the console. Choose one way:
+   - **ns2jb + [ns2-savekit](https://github.com/dougchansan/ns2-savekit):**
+     1. Start Seedsow once and close it, so its save exists.
+     2. Add its program ID to `config/titles.local.json` (`write`): `0100ee5021c9e000` for the full
+        game, or `010042d022aea000` for the demo.
+     3. Run `node tools/kit.cjs`, choose 3, and point it at `out/save/`.
+   - **JKSV:** restore the zip on a Switch 1 with Atmosphere. Then move the save to the Switch 2 with
+     Nintendo's save transfer.
+3. Restart. Start Seedsow on the user with the exploit save, and press A in the launcher.
+4. Open SeedSwap. It finds the user with the exploit save and never uses that user.
+5. In the Saves tab, press Y and pick the user who plays. Restart and run the launcher (A) again.
+6. In the Library, press - and pick a host: Seedsow, or any installed Switch 1 game. Then switch games.
 
 ## Launcher buttons
 
 | Button | What it does |
 |---|---|
-| A | Runs kaiHEN. If `SD:/kaihen/s2_ml.lua` is on the card, SeedSwap's loader starts first. |
-| B | Same as A, with the newest seedsow-semi-untethered scan and wave stages (e5c14e5). Then copies SeedSwap from the save to `SD:/switch/seedswap.nro`. It never replaces a newer SeedSwap. |
+| A | Runs kaiHEN, with SeedSwap's loader first. |
+| B | Same as A, with the newest seedsow-semi-untethered scan and wave stages (e5c14e5). Then installs SeedSwap from the save to `SD:/switch`, unless the SD copy is the same or newer. |
 | Y | alula's HTTP server (port 8080). |
 | Hold - first | Runs the previous A or B. |
 
-## Build
+## What is here
 
-    python3 build.py
-
-This makes two things:
-- `out/save/`: every file of the save;
-- `out/seedsow-seedswap-save.zip`: the same files as one zip.
-
-The script needs Python 3.8 or newer. It downloads these parts at fixed commits and checks each
-file's SHA-256 against this repository:
-- alula's launcher files;
-- the unchanged seedsow-semi-untethered modules.
-
-They are not stored here. alula's repository has no licence file, so they are fetched from the
-source instead.
-
-GitHub Actions runs the same build on every push. It doesn't upload the result.
-
-## Install (firmware 23.0.1)
-
-Choose one way:
-
-- **ns2jb + [ns2-savekit](https://github.com/dougchansan/ns2-savekit):**
-  1. Start Seedsow once and close it, so its save exists.
-  2. Add its program ID to savekit's `config/titles.local.json` `write` list:
-     `0100ee5021c9e000` (full game) or `010042d022aea000` (demo).
-  3. Run `node tools/kit.cjs`, choose 3, and point it at `out/save/`. It backs the save up, writes
-     the files in one go, and checks each one.
-- **JKSV:** on a Switch 1 with Atmosphere, restore the zip to the Seedsow save. Then move the save
-  to the Switch 2 with Nintendo's save transfer.
-
-SeedSwap also needs its SD card files (see the SeedSwap release).
-
-## What is in files/
-
-These files change or add to seedsow-semi-untethered 6201c35:
-- `s2_kh_ro.lua`: the kaiHEN stage. It runs `SD:/kaihen/s2_ml.lua` (SeedSwap's loader) before
-  kaiHEN, if that file is on the card.
-- `inject2.lua`: the launcher menu with A, B and Y.
-- `exploita2.lua`, `b_s2_main.lua`, `b_s2_kaihen.lua`, `b_s2_promote.lua`: the A run. It adds:
-  - a build check before the first write;
-  - "power the console fully off" messages when a run fails;
-  - a kaiHEN file size check;
-  - a promote stage that never reads memory nothing has read before.
-- `exploitb2.lua`, `n_s2_scan.lua`, `n_s2_wave.lua`: B. The two `n_` files are seedsow-semi-untethered
-  e5c14e5's scan and wave stages, unchanged apart from line endings and stripped comments. Only B
-  loads them.
-- `exploita.lua`, `exploitb.lua`: the previous A and B (hold -).
-- `seedswap.nro`: SeedSwap.
+| Folder | Contents |
+|---|---|
+| `save/` | Our files for the Seedsow save: the kaiHEN stage that starts the loader (`s2_kh_ro.lua`), the A/B menu, the A and B entries, their hardened copies, and B's two newer modules. |
+| `sd/` | The loader stage (`kaihen/s2_ml.lua`), `ml_image.lua`, `tpl.lua`, and the install image. The image has Seedsow plus 9 spare host slots. Its save guard is on nobody until you pick the play user. |
+| `seedswap/` | SeedSwap's source. |
+| `loader/` | Our changes to ns2jb-modloader, which the install image is built from, and the image tools. |
+| `licenses/` | Licence texts. |
 
 ## Licences
 
-- The `.lua` files in `files/` are GPL-2.0 (`LICENSE`), as seedsow-semi-untethered is. Its
-  CivSwitchFS part is MIT (`licenses/CivSwitchFS-MIT.txt`).
-- `files/seedswap.nro` is SeedSwap's own build. It is not covered by `LICENSE`.
-- The downloaded files keep their authors' terms.
+- **GPL-2.0 (`LICENSE`):** `save/`, `sd/` and `loader/`. They derive from seedsow-semi-untethered
+  and SebaaMG/ns2jb-modloader, which are both GPL-2.0. seedsow-semi-untethered's CivSwitchFS part is
+  MIT (`licenses/CivSwitchFS-MIT.txt`).
+- **`seedswap/`:** SeedSwap's own code. It includes stb_image (MIT or public domain) and font data
+  made from the Ubuntu font (`licenses/UBUNTU-FONT-LICENCE.txt`).
+- **Downloaded files:** these keep their authors' terms.
 
 ## Credits
 
-- alula: switch-artemis-launcher
-- rushinz: seedsow-semi-untethered
-- ItsNerisma: CivSwitchFS
-- ouncebrew: kaiHEN
+| Who | Project |
+|---|---|
+| alula | switch-artemis-launcher |
+| rushinz | seedsow-semi-untethered |
+| ItsNerisma | CivSwitchFS |
+| kurumuz | ns2jb |
+| SebaaMG | ns2jb-modloader |
+| ouncebrew | kaiHEN, libounce, ounce-devkit |
+| dougchansan | ns2-savekit |

@@ -1,28 +1,63 @@
-# Builds the save from the pinned upstream sources and checks every file against SHA256SUMS.txt.
-# Nothing is uploaded: the built save holds alula's launcher files, which have no licence to
-# redistribute, so everyone builds their own copy with build.py.
+# Builds SeedSwap from seedswap/ with ouncebrew/ounce-devkit (the toolchain image, pinned), then the
+# save and SD files with build.py, and checks every file against SHA256SUMS.txt (the NRO included,
+# so a run proves it is byte for byte the tested build). Only seedswap.nro is uploaded: the save
+# and the SD files hold downloads that have no licence to redistribute, so build.py makes them.
 name: build
 
 on:
   push:
+    branches: ["**"]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
+env:
+  OUNCE_DEVKIT: 75cea5538b3a57d8f2ecf53354274cf00a365d20   # its install.sh default devkit: 20261115b
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Toolchain image (ounce-devkit ${{ env.OUNCE_DEVKIT }})
+        run: |
+          git clone --quiet https://github.com/ouncebrew/ounce-devkit.git "$RUNNER_TEMP/ounce-devkit"
+          git -C "$RUNNER_TEMP/ounce-devkit" checkout --quiet "$OUNCE_DEVKIT"
+          docker build --quiet -t ounce-devkit "$RUNNER_TEMP/ounce-devkit"
+
+      - name: Build SeedSwap
+        run: |
+          docker run --rm -v "$PWD/seedswap:/work" -w /work ounce-devkit make
+          sha256sum seedswap/seedswap.nro
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Build and check
-        run: python3 build.py
-      - name: Summary
-        run: |
-          echo "save files: $(ls out/save | wc -l)"
-          sha256sum out/seedsow-seedswap-save.zip
-          grep seedsow-seedswap-save.zip SHA256SUMS.txt
+
+      - name: Build the save and SD files, check every file
+        run: python3 build.py --nro seedswap/seedswap.nro
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: seedswap-nro
+          path: seedswap/seedswap.nro
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: seedswap-nro
+      - name: GitHub release with seedswap.nro
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" seedswap.nro --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes "SeedSwap built by GitHub Actions. Build the save and SD files with build.py --nro seedswap.nro."
