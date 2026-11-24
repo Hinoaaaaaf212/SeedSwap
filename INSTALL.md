@@ -1,11 +1,12 @@
 # Installing SeedSwap
 
-There are four parts:
+There are five parts:
 1. Build the files on a PC.
 2. Copy the SD card files.
 3. Put the Seedsow save on the console: with ns2jb, or over the network if you already have
    seedsow-semi-untethered.
 4. First run.
+5. Add your games.
 
 It takes about half an hour the first time.
 
@@ -152,11 +153,38 @@ consoles. kaiHEN needs firmware 23.0.1.
    - It finds the spare user by its save and never uses that user.
 5. **Choose who plays:** go to the **Saves** tab, press **Y**, and pick the user you play on. Then
    restart the console and run the launcher again (Seedsow → A).
-6. **Add games:** use only your own dumps and your own console's `prod.keys` (see the warning at the
-   top). In the **Library**, press **-** and pick a host. That's Seedsow, or any installed
-   Switch 1 game. Then pick a game and switch to it.
+6. Add your games (next section).
 
 Every time you turn the console on, run the launcher (Seedsow → A) on the spare user before playing.
+
+## 5. Add your games
+
+SeedSwap turns your game dumps into games it can run, on the console itself. Use only dumps you made
+yourself of games you own, and the `prod.keys` from your own console (see the warning at the top).
+
+1. **Put your keys on the SD card:** copy your `prod.keys` to `SD:/switch/prod.keys`.
+2. **Put your dumps on the SD card:** copy them to `SD:/seedswap/nsp/` (make the folder if it isn't
+   there), or to the root of the SD card.
+   - Formats: `.nsp`, `.nsz`, `.xci` or `.xcz`. Unpack zip, rar or 7z files first.
+   - You can add a game's update and its DLC the same way, as their own dumps.
+   - Use FTP or a card reader.
+   - Converting needs free space for the converted game: about the size of the dump, more for a
+     compressed `.nsz` or `.xcz`.
+3. **Convert:** open SeedSwap and go to the **Convert** tab (L and R change tabs). Press **Y** to look
+   for new dumps, pick one and press **A**.
+   - **A game:** it's added to the Library. If its update is on the card too, the update goes in at
+     the same time.
+   - **An update:** it updates a game that's already in the Library. Keep the base game's dump on the
+     card for this. Your save is kept.
+   - **DLC:** it's added to its game. Press A again on the DLC to remove it.
+4. **Pick a host (once):** in the **Library**, press **-** and pick a host. That's Seedsow, or any
+   installed Switch 1 game. Your games run in its place.
+5. **Play:** in the **Library**, pick a game and press **A** (Switch). Then start the host game from
+   HOME on the user who plays, as SeedSwap says at the bottom of the screen.
+   - To change games, open SeedSwap again and switch. Each game keeps its own save.
+
+If a dump doesn't convert, SeedSwap says why: for example, keys that are missing or too old, or a bad
+dump. Its **Log** tab has the details.
 
 ## Launcher buttons
 
