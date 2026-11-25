@@ -171,6 +171,7 @@ local function launcher_main()
 
 	print("==============================================")
 	print(" switch-artemis-launcher (Seedsow + kaiHEN)")
+	print(" SeedSwap 0.15.1")
 	print("==============================================")
 	print(" Press a button on the controller to launch:")
 	print(" A : Run kaiHEN + modloader (hardened)")
