@@ -188,6 +188,59 @@ static bool blocks_ok(const uint8_t *table, size_t table_size, const uint8_t *da
     return true;
 }
 
+struct DlcStream {
+    Pfs0Entry entry;
+    uint8_t header[0xc00];
+    Section section;
+    Aes128 aes;
+    uint64_t data_off;
+    size_t block;
+    uint8_t *hashes;    // the level above the data: one SHA-256 per block
+    size_t hash_size;
+};
+
+bool dlcpkg_copy(const DlcPackage *p, DlcReadFn read, void *user, DlcWriteFn write, void *wuser, uint64_t to,
+                 uint8_t sha_out[32], DlcProgressFn progress, void *puser, char *err, size_t errn) {
+    const DlcStream *st = p->stream;
+    if (!st) { snprintf(err, errn, "This add-on content is held in memory, not read from its dump."); return false; }
+    Ctx *c = calloc(1, sizeof(Ctx));
+    size_t per = st->block >= (4u << 20) ? 1 : (4u << 20) / st->block, chunk = per * st->block;
+    uint8_t *buf = malloc(chunk);
+    Sha256 sha;
+    sha256_init(&sha);
+    bool ok = c && buf;
+    if (!ok) snprintf(err, errn, "Not enough memory.");
+    if (c) { c->read = read; c->user = user; c->size = UINT64_MAX; c->err = err; c->errn = errn; }
+    const uint64_t total = p->image_size;
+    for (uint64_t at = 0; ok && at < total;) {
+        size_t n = total - at < chunk ? (size_t)(total - at) : chunk;
+        size_t first = (size_t)(at / st->block);
+        if (!section_read(c, &st->entry, &st->section, &st->aes, st->data_off + at, buf, n)) {
+            snprintf(err, errn, "%s could not be read; the dump is cut short or damaged.", st->entry.name);
+            ok = false;
+        } else if (first * 32 > st->hash_size ||
+                   !blocks_ok(st->hashes + first * 32, st->hash_size - first * 32, buf, n, st->block)) {
+            snprintf(err, errn, "%s fails its own checksums at byte %llu: the dump is damaged. Dump or download it "
+                     "again.", st->entry.name, (unsigned long long)at);
+            ok = false;
+        } else if (write(wuser, to + at, buf, n) != 0) {
+            snprintf(err, errn, "The add-on content could not be written to the SD card.");
+            ok = false;
+        } else {
+            sha256_update(&sha, buf, n);
+            at += n;
+            if (progress && !progress(puser, at, total)) {
+                snprintf(err, errn, "Stopped.");
+                ok = false;
+            }
+        }
+    }
+    sha256_final(&sha, sha_out);
+    free(buf);
+    free(c);
+    return ok;
+}
+
 static int find_entry(Ctx *c, const char *name) {
     for (int i = 0; i < c->count; i++)
         if (!strcasecmp(c->entries[i].name, name)) return i;
@@ -280,15 +333,20 @@ static bool read_image(Ctx *c, const char *data_name, DlcPackage *out) {
         off[l] = rd64(fs + 0x18 + 0x18 * l);
         size[l] = rd64(fs + 0x20 + 0x18 * l);
         log2[l] = rd32(fs + 0x28 + 0x18 * l);
-        if (log2[l] < 9 || log2[l] > 24 || size[l] > DLCPKG_MAX_IMAGE) {
-            snprintf(c->err, c->errn, "%s holds more than %u MiB of data. SeedSwap builds in small (unlock-style) add-on "
-                     "content so far; use prepare_game.py on the PC for this one.", e->name, DLCPKG_MAX_IMAGE >> 20);
+        if (log2[l] < 9 || log2[l] > 24 || (l < levels - 1 && size[l] > DLCPKG_MAX_HASHES) ||
+            size[l] > DLCPKG_MAX_STREAM) {
+            snprintf(c->err, c->errn, "%s holds more data than SeedSwap can build in (%llu bytes).", e->name,
+                     (unsigned long long)size[l]);
             return false;
         }
     }
+    // A big image (whole extra content, not an unlock) is not held in memory: its hash levels are, and
+    // dlcpkg_copy reads the data level block by block, checked against them, straight to the game's RomFS.
+    bool stream = size[levels - 1] > DLCPKG_MAX_IMAGE;
+    if (stream && levels < 2) return fail(c, "%s: unexpected hash tree.", e->name);
     uint8_t *data[6] = {0};
     bool ok = true;
-    for (int l = 0; ok && l < levels; l++) {
+    for (int l = 0; ok && l < levels - (stream ? 1 : 0); l++) {
         data[l] = malloc(size[l] ? (size_t)size[l] : 1);
         ok = data[l] && section_read(c, e, &s, &aes, off[l], data[l], (size_t)size[l]);
     }
@@ -297,10 +355,50 @@ static bool read_image(Ctx *c, const char *data_name, DlcPackage *out) {
         return fail(c, "%s could not be read; the dump is cut short or damaged.", e->name);
     }
     uint8_t digest[32];
-    sha256(data[0], (size_t)size[0], digest);
-    ok = !memcmp(digest, fs + 0xc8, 32) || blocks_ok(fs + 0xc8, master_size, data[0], (size_t)size[0], (size_t)1 << log2[0]);
-    for (int l = 1; ok && l < levels; l++)
+    int held = levels - (stream ? 1 : 0);
+    if (ok && stream) {   // the first block of the data level, checked, to see that it is a RomFS
+        size_t block = (size_t)1 << log2[levels - 1], n = size[levels - 1] < block ? (size_t)size[levels - 1] : block;
+        data[levels - 1] = malloc(n);
+        ok = data[levels - 1] && section_read(c, e, &s, &aes, off[levels - 1], data[levels - 1], n) &&
+             blocks_ok(data[levels - 2], 32, data[levels - 1], n, block);
+        if (ok && (n < 0x50 || rd64(data[levels - 1]) != 0x50)) {
+            for (int l = 0; l < levels; l++) free(data[l]);
+            return fail(c, "%s does not decrypt to a RomFS image.", e->name);
+        }
+        free(data[levels - 1]);
+        data[levels - 1] = NULL;
+    }
+    if (ok) {
+        sha256(data[0], (size_t)size[0], digest);
+        ok = !memcmp(digest, fs + 0xc8, 32) ||
+             blocks_ok(fs + 0xc8, master_size, data[0], (size_t)size[0], (size_t)1 << log2[0]);
+    }
+    for (int l = 1; ok && l < held; l++)
         ok = blocks_ok(data[l - 1], (size_t)size[l - 1], data[l], (size_t)size[l], (size_t)1 << log2[l]);
+    if (stream) {
+        DlcStream *st = ok ? calloc(1, sizeof(*st)) : NULL;
+        if (!st) {
+            for (int l = 0; l < levels; l++) free(data[l]);
+            return ok ? fail(c, "Not enough memory.", NULL)
+                      : fail(c, "%s fails its own checksums: the dump is damaged, or its ticket and the keys file do "
+                                "not match. Dump or download it again.", e->name);
+        }
+        for (int l = 0; l < levels - 2; l++) free(data[l]);
+        st->entry = *e;
+        memcpy(st->header, header, sizeof(st->header));
+        st->section = s;
+        st->section.fs = st->header + (s.fs - header);
+        st->aes = aes;
+        st->data_off = off[levels - 1];
+        st->block = (size_t)1 << log2[levels - 1];
+        st->hashes = data[levels - 2];
+        st->hash_size = (size_t)size[levels - 2];
+        out->stream = st;
+        out->image = NULL;
+        out->image_size = (size_t)size[levels - 1];
+        snprintf(out->data_nca, sizeof(out->data_nca), "%s", data_name);
+        return true;
+    }
     for (int l = 0; l < levels - 1; l++) free(data[l]);
     if (!ok) {
         free(data[levels - 1]);
@@ -365,6 +463,12 @@ done:
 }
 
 void dlcpkg_free(DlcPackage *p) {
+    if (p->stream) {
+        memset(&p->stream->aes, 0, sizeof(p->stream->aes));
+        free(p->stream->hashes);
+        free(p->stream);
+        p->stream = NULL;
+    }
     free(p->image);
     p->image = NULL;
     p->image_size = 0;

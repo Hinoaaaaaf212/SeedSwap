@@ -6,14 +6,16 @@ $(error "Please set DEVKITPRO in your environment")
 endif
 
 TARGET := seedswap
-VERSION := 0.14.2
+VERSION := 1.0.0
+# 0 on the stable branch: no Add to HOME
+ADD_TO_HOME := 0
 BUILD := build
 PREFIX := $(DEVKITPRO)/devkitA64/bin/aarch64-none-elf-
 include $(DEVKITPRO)/libounce/switch2_cpu.mk
 
 ARCH := $(SWITCH2_CPU) -mtp=soft -fPIE
 CFLAGS := $(ARCH) -std=gnu11 -O2 -Wall -Wextra -Werror -Wno-format-truncation -ffunction-sections -fdata-sections \
-    -D__SWITCH__ -D__SWITCH2__ \
+    -D__SWITCH__ -D__SWITCH2__ -DADD_TO_HOME=$(ADD_TO_HOME) \
     -I$(DEVKITPRO)/portlibs/switch2/include -I$(DEVKITPRO)/libounce/include -I$(DEVKITPRO)/portlibs/switch/include
 LDFLAGS := $(ARCH) -specs=$(DEVKITPRO)/libounce/switch.specs -Wl,--gc-sections
 LIBS := -L$(DEVKITPRO)/portlibs/switch2/lib -L$(DEVKITPRO)/libounce/lib -L$(DEVKITPRO)/portlibs/switch/lib -lzstd -lnx -lm
@@ -23,7 +25,7 @@ all: $(TARGET).nro
 $(BUILD):
 	mkdir -p $@
 
-SOURCES := main ui model util gfx nsp plat_switch font_data compat_game crypto dlcpkg dumpcheck users aoc dlc_game ncz pkg stage fixes compat_words convert hosts
+SOURCES := main ui model util gfx nsp plat_switch font_data compat_game crypto dlcpkg dumpcheck users aoc dlc_game ncz pkg stage fixes compat_words convert hosts home vfs_split
 COMPAT := a64 nsofile cmpt compat
 OBJS := $(addprefix $(BUILD)/,$(addsuffix .o,$(SOURCES))) $(addprefix $(BUILD)/compat_,$(addsuffix .o,$(COMPAT))) \
     $(BUILD)/stb_impl.o

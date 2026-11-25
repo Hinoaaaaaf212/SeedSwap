@@ -106,9 +106,11 @@ Run the launcher (Seedsow → A) every time you turn the console on.
 
 1. Copy your `prod.keys` to `SD:/switch/prod.keys`.
 2. Copy your dumps to `SD:/seedswap/nsp/`, with their updates and DLC. SeedSwap reads `.nsp`, `.nsz`,
-   `.xci` and `.xcz`.
+   `.xci` and `.xcz`. On a FAT32 card, a dump over 4 GB can be a split folder (`game.nsp/00`, `01`, ...).
 3. In SeedSwap, open **Convert** and press **Y**. Pick the game and press **A**. Its update goes in too.
-   - To add a DLC, pick it and press **A**. A game can have up to 16. Press A again to remove one.
+   - To add a DLC, pick it and press **A**. A game can have up to 100. Press A again to remove one.
+   - To add all of a game's DLC at once, pick one of its DLC, press **A**, then **X**. Afterwards
+     SeedSwap offers to delete the DLC dumps. Keep them if you'll update the game here later.
 4. In **Library**, press **-** and pick a host: Seedsow or any installed Switch 1 game.
    - If it says **start it once first**, start that game from HOME once, then open SeedSwap again.
 5. Pick a game and press **A**. Then start the host from HOME, on the user who plays.

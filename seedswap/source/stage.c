@@ -440,6 +440,12 @@ typedef struct {
     uint8_t *sp_rows;
     uint32_t sp_count;
     uint64_t sp_phys, sp_table, sp_upper;
+    // the compression layer (newer games): the hash tree's data level holds packed blocks and, at pk_off, their
+    // table (a bucket tree of 0x18-byte rows); the RomFS is what those blocks unpack to
+    bool packed;
+    uint64_t pk_off, pk_size;
+    uint8_t pk_hdr[16];
+    VfsFile *pk_file;           // the data level as staged on the SD card, while it is unpacked
     char *err;
     size_t errn;
 } Romfs;
@@ -594,9 +600,17 @@ static bool plan(Romfs *r) {
         if (r->off[l] + r->size[l] > r->off[d])
             return fail(r->err, r->errn, "The game data's hash tree is laid out in a way SeedSwap does not handle.");
     if (r->off[d] > MAX_HASH_AREA) return fail(r->err, r->errn, "The game data's hash tree is larger than expected.");
-    for (int i = 0x178; i < 0x1a0; i++)
-        if (r->bs.fs[i]) return fail(r->err, r->errn, "This game stores its data in a compressed layout that SeedSwap "
-                                     "does not read yet.");
+    // The compression layer sits above the hash tree (Atmosphère's NcaFileSystemDriver: integrity, then
+    // compression). Patched, it is the update's: the base game is then read below both.
+    const uint8_t *cfs = r->patch ? r->ps.fs : r->bs.fs;
+    r->pk_off = rd64(cfs + 0x178);
+    r->pk_size = rd64(cfs + 0x180);
+    r->packed = r->pk_off && r->pk_size;
+    if (r->packed) {
+        memcpy(r->pk_hdr, cfs + 0x188, 16);
+        if (memcmp(r->pk_hdr, "BKTR", 4) || r->pk_off > r->size[d] || r->pk_size > r->size[d] - r->pk_off)
+            return fail(r->err, r->errn, "The game data's compression table is damaged.");
+    }
     if (!memcmp(r->bs.fs + 0x158, "BKTR", 4)) {
         if (!r->patch)
             return fail(r->err, r->errn, "This base game is stored sparse (a cartridge that carries an update keeps only "
@@ -613,9 +627,9 @@ static bool plan(Romfs *r) {
         return push_base(r, 0, r->vsize, 0);
     }
     const uint8_t *fs = r->ps.fs;
-    for (int i = 0x148; i < 0x1a0; i++)
-        if (fs[i]) return fail(r->err, r->errn, "This update stores its data in a sparse or compressed layout that SeedSwap "
-                               "does not read yet.");
+    for (int i = 0x148; i < 0x178; i++)
+        if (fs[i]) return fail(r->err, r->errn, "This update stores its data in a sparse layout that SeedSwap does not "
+                               "read.");
     uint8_t *ind = NULL, *ctr = NULL;
     uint32_t nind = 0, nctr = 0;
     uint64_t ctr_end = 0;
@@ -720,6 +734,228 @@ static bool tick(Progress *p, uint64_t add, const char *phase, uint64_t of_done,
     return p->cb(p->total ? (float)((double)p->done / (double)p->total) : -1.0f, text);
 }
 
+// ---- the compression layer
+
+// One LZ4 block (the raw block format, no frame): exactly dst_n bytes out, every read and write in bounds.
+bool stage_lz4_block(const uint8_t *src, size_t src_n, uint8_t *dst, size_t dst_n) {
+    size_t ip = 0, op = 0;
+    while (ip < src_n) {
+        uint8_t token = src[ip++];
+        size_t lit = token >> 4;
+        if (lit == 15) {
+            uint8_t b;
+            do {
+                if (ip >= src_n) return false;
+                b = src[ip++];
+                lit += b;
+            } while (b == 255);
+        }
+        if (lit > src_n - ip || lit > dst_n - op) return false;
+        memcpy(dst + op, src + ip, lit);
+        ip += lit;
+        op += lit;
+        if (ip == src_n) break;   // the last sequence is literals only
+        if (src_n - ip < 2) return false;
+        size_t dist = (size_t)src[ip] | (size_t)src[ip + 1] << 8;
+        ip += 2;
+        if (!dist || dist > op) return false;
+        size_t len = token & 15;
+        if (len == 15) {
+            uint8_t b;
+            do {
+                if (ip >= src_n) return false;
+                b = src[ip++];
+                len += b;
+            } while (b == 255);
+        }
+        len += 4;
+        if (len > dst_n - op) return false;
+        for (size_t i = 0; i < len; i++, op++) dst[op] = dst[op - dist];   // the copy may overlap itself
+    }
+    return op == dst_n;
+}
+
+enum { PACK_NONE = 0, PACK_ZEROS = 1, PACK_LZ4 = 3 };
+#define PACK_ROW 0x18
+
+static bool packed_meta_read(Romfs *r, uint64_t off, void *buf, size_t n) {
+    size_t got = 0;
+    return vfs_read(r->pk_file, (int64_t)off, buf, n, &got) == 0 && got == n;
+}
+
+// The packed blocks' table, checked the way Atmosphère's CompressedStorage checks each row before it reads it.
+static bool packed_rows(Romfs *r, uint8_t **rows, uint32_t *count, uint64_t *end) {
+    if (!bucket_tree_from(r, packed_meta_read, r->pk_off, r->pk_size, r->pk_hdr, PACK_ROW, rows, count, end))
+        return fail(r->err, r->errn, "The game data's compression table is damaged.");
+    const uint8_t *t = *rows;
+    bool ok = *end > 0 && rd64(t) == 0;
+    for (uint32_t i = 0; ok && i < *count; i++) {
+        const uint8_t *e = t + PACK_ROW * (size_t)i;
+        uint64_t v = rd64(e), p = rd64(e + 8), next = i + 1 < *count ? rd64(e + PACK_ROW) : *end;
+        uint32_t psize = rd32(e + 0x14);
+        uint8_t type = e[0x10];
+        if (!(v < next) || p > r->pk_off) ok = false;
+        else if (type == PACK_NONE) ok = next - v <= r->pk_off - p;
+        else if (type == PACK_LZ4)
+            ok = p % 16 == 0 && psize && psize <= r->pk_off - p && psize <= CHUNK && next - v <= CHUNK;
+        else if (type != PACK_ZEROS) {
+            free(*rows);
+            *rows = NULL;
+            char text[160];
+            snprintf(text, sizeof(text), "The game data uses a kind of compression SeedSwap does not know (type %u).", type);
+            return fail(r->err, r->errn, text);
+        }
+    }
+    if (!ok) {
+        free(*rows);
+        *rows = NULL;
+        return fail(r->err, r->errn, "The game data's compression table is damaged.");
+    }
+    return true;
+}
+
+// The packed data level (staged at r->pk_file, checked against the hash tree) unpacked into `path`, then read back
+// against the SHA-256 taken while it was written.
+static bool unpack(Romfs *r, const char *path, Progress *pr, RomfsResult *out) {
+    uint8_t *rows = NULL, *in = NULL, *outb = NULL;
+    uint32_t count = 0;
+    uint64_t end = 0;
+    VfsFile *f = NULL;
+    bool ok = false, created = false;
+    if (!packed_rows(r, &rows, &count, &end)) return false;
+    in = malloc(CHUNK);
+    outb = malloc(CHUNK);
+    if (!in || !outb) {
+        fail(r->err, r->errn, "Not enough memory.");
+        goto done;
+    }
+    int64_t free_now = vfs_free_space(VFS_SD);
+    if (free_now >= 0 && (uint64_t)free_now < end + 64ull * 1024 * 1024) {
+        snprintf(r->err, r->errn, "Not enough room on the SD card to unpack the game data: it needs %.2f GB, %.2f GB are "
+                 "free.", (double)end / 1e9, (double)free_now / 1e9);
+        goto done;
+    }
+    pr->total = pr->done + 2 * end;
+    vfs_delete(VFS_SD, path);
+    if (vfs_create(VFS_SD, path, (int64_t)end) != 0) {
+        snprintf(r->err, r->errn, "SeedSwap could not create a %.2f GB file on the SD card (%s).", (double)end / 1e9,
+                 vfs_last_error());
+        goto done;
+    }
+    created = true;
+    f = vfs_open(VFS_SD, path, true);
+    if (!f) {
+        snprintf(r->err, r->errn, "SeedSwap could not open %s for writing (%s).", path, vfs_last_error());
+        goto done;
+    }
+    FastSha256 whole;
+    fsha256_init(&whole);
+    uint64_t win = 0, win_n = 0, written = 0;
+    size_t held = 0;   // bytes in outb, to be written at `written`
+    for (uint32_t i = 0; i < count; i++) {
+        const uint8_t *e = rows + PACK_ROW * (size_t)i;
+        uint64_t v = rd64(e), p = rd64(e + 8), next = i + 1 < count ? rd64(e + PACK_ROW) : end;
+        uint8_t type = e[0x10];
+        for (uint64_t at = 0; at < next - v;) {
+            // this row, a piece at a time (an LZ4 block is one piece: it is at most CHUNK unpacked)
+            size_t k = next - v - at < CHUNK ? (size_t)(next - v - at) : CHUNK;
+            if (CHUNK - held < k) {
+                if (vfs_write(f, (int64_t)written, outb, held) != 0) {
+                    snprintf(r->err, r->errn, "Writing to the SD card failed (%s).", vfs_last_error());
+                    goto done;
+                }
+                written += held;
+                held = 0;
+            }
+            uint8_t *dst = outb + held;
+            if (type == PACK_ZEROS) memset(dst, 0, k);
+            else {
+                uint64_t from = type == PACK_LZ4 ? p : p + at, n = type == PACK_LZ4 ? rd32(e + 0x14) : k;
+                if (from < win || from + n > win + win_n) {
+                    win = from;
+                    win_n = r->pk_off - from < CHUNK ? r->pk_off - from : CHUNK;
+                    if (!packed_meta_read(r, win, in, (size_t)win_n)) {
+                        snprintf(r->err, r->errn, "Reading the staged game data back from the SD card failed (%s).",
+                                 vfs_last_error());
+                        goto done;
+                    }
+                }
+                const uint8_t *src = in + (from - win);
+                if (type == PACK_NONE) memcpy(dst, src, k);
+                else if (!stage_lz4_block(src, (size_t)n, dst, k)) {
+                    snprintf(r->err, r->errn, "A compressed block of the game data does not unpack (near %.2f GB): the "
+                             "dump is damaged.", (double)v / 1e9);
+                    goto done;
+                }
+            }
+            fsha256_update(&whole, dst, k);
+            held += k;
+            at += k;
+            if (!tick(pr, k, "Unpacking the game data", written + held, end)) {
+                fail(r->err, r->errn, "Stopped.");
+                goto done;
+            }
+        }
+    }
+    if (held && vfs_write(f, (int64_t)written, outb, held) != 0) {
+        snprintf(r->err, r->errn, "Writing to the SD card failed (%s).", vfs_last_error());
+        goto done;
+    }
+    if (vfs_flush(f) != 0) {
+        snprintf(r->err, r->errn, "Writing to the SD card failed (%s).", vfs_last_error());
+        goto done;
+    }
+    vfs_close(f);
+    fsha256_final(&whole, out->sha256);
+
+    // read back: the whole file's SHA-256 must be the one taken while writing
+    f = vfs_open(VFS_SD, path, false);
+    if (!f || vfs_size(f) != (int64_t)end) {
+        fail(r->err, r->errn, "The game data file on the SD card does not have the size it was written with.");
+        goto done;
+    }
+    FastSha256 back;
+    fsha256_init(&back);
+    for (uint64_t at = 0; at < end;) {
+        size_t k = end - at < CHUNK ? (size_t)(end - at) : CHUNK, got = 0;
+        if (vfs_read(f, (int64_t)at, outb, k, &got) != 0 || got != k) {
+            snprintf(r->err, r->errn, "Reading the game data back from the SD card failed (%s).", vfs_last_error());
+            goto done;
+        }
+        if (at == 0 && (k < 8 || rd64(outb) != 0x50)) {
+            fail(r->err, r->errn, "The unpacked game data does not start with a RomFS header.");
+            goto done;
+        }
+        fsha256_update(&back, outb, k);
+        at += k;
+        if (!tick(pr, k, "Checking what was written", at, end)) {
+            fail(r->err, r->errn, "Stopped.");
+            goto done;
+        }
+    }
+    uint8_t digest[32];
+    fsha256_final(&back, digest);
+    if (memcmp(digest, out->sha256, 32)) {
+        fail(r->err, r->errn, "The game data read back from the SD card is not what was written: the SD card is damaged.");
+        goto done;
+    }
+    out->size = end;
+    ok = true;
+done:
+    if (f) vfs_close(f);
+    if (!ok && created) vfs_delete(VFS_SD, path);
+    free(rows);
+    free(in);
+    free(outb);
+    return ok;
+}
+
+bool stage_romfs_packed(Nca *base, Nca *patch) {
+    NcaSection s;
+    if (!nca_section(patch ? patch : base, 0, patch ? 4 : 3, &s)) return false;
+    return rd64(s.fs + 0x178) && rd64(s.fs + 0x180);
+}
+
 bool stage_romfs_size(Nca *base, Nca *patch, uint64_t *size, char *err, size_t errn) {
     NcaSection s;
     if (!nca_section(patch ? patch : base, 0, patch ? 4 : 3, &s) || memcmp(s.fs + 8, "IVFC", 4)) {
@@ -741,7 +977,13 @@ bool stage_romfs(Nca *base, Nca *patch, const char *path, ProgressFn cb, RomfsRe
     uint8_t *hashes = NULL, *buf = NULL;
     VfsFile *f = NULL;
     bool ok = false, created = false;
+    char packed[300] = "";
+    const char *staged = path;   // where the data level goes: romfs.bin, or beside it while it is packed
     if (!plan(&r)) goto done;
+    if (r.packed) {
+        snprintf(packed, sizeof(packed), "%s.packed", path);
+        staged = packed;
+    }
     int d = r.levels - 1;
     if (d < 1) {
         fail(err, errn, "The game data's hash tree has only one level.");
@@ -758,7 +1000,7 @@ bool stage_romfs(Nca *base, Nca *patch, const char *path, ProgressFn cb, RomfsRe
         goto done;
     }
     qsort(r.ext, r.next, sizeof(Extent), cmp_extent);
-    Progress pr = {.cb = cb, .total = hash_end + 2 * data_size};
+    Progress pr = {.cb = cb, .total = hash_end + 2 * data_size + (r.packed ? 2 * data_size : 0)};
 
     // 1. the hash levels, checked against the master hash before anything is written
     for (size_t i = 0; i < r.next; i++) {
@@ -798,16 +1040,16 @@ bool stage_romfs(Nca *base, Nca *patch, const char *path, ProgressFn cb, RomfsRe
     uint64_t table_size = r.size[d - 1];
 
     // 2. the data, in the order it lies in the dumps, each piece written where it belongs
-    vfs_delete(VFS_SD, path);
-    if (vfs_create(VFS_SD, path, (int64_t)data_size) != 0) {
-        snprintf(err, errn, "SeedSwap could not create a %.2f GB file on the SD card (%s). A FAT32 card holds files up to "
-                 "4 GB only; exFAT is needed.", (double)data_size / 1e9, vfs_last_error());
+    vfs_delete(VFS_SD, staged);
+    if (vfs_create(VFS_SD, staged, (int64_t)data_size) != 0) {
+        snprintf(err, errn, "SeedSwap could not create a %.2f GB file on the SD card (%s).", (double)data_size / 1e9,
+                 vfs_last_error());
         goto done;
     }
     created = true;
-    f = vfs_open(VFS_SD, path, true);
+    f = vfs_open(VFS_SD, staged, true);
     if (!f) {
-        snprintf(err, errn, "SeedSwap could not open %s for writing (%s).", path, vfs_last_error());
+        snprintf(err, errn, "SeedSwap could not open %s for writing (%s).", staged, vfs_last_error());
         goto done;
     }
     uint64_t copied = 0;
@@ -843,7 +1085,7 @@ bool stage_romfs(Nca *base, Nca *patch, const char *path, ProgressFn cb, RomfsRe
     vfs_close(f);
 
     // 3. read back: every block against the hash tree, and the whole file's SHA-256
-    f = vfs_open(VFS_SD, path, false);
+    f = vfs_open(VFS_SD, staged, false);
     if (!f || vfs_size(f) != (int64_t)data_size) {
         fail(err, errn, "The game data file on the SD card does not have the size it was written with.");
         goto done;
@@ -862,7 +1104,7 @@ bool stage_romfs(Nca *base, Nca *patch, const char *path, ProgressFn cb, RomfsRe
             snprintf(err, errn, "Reading the game data back from the SD card failed (%s).", vfs_last_error());
             goto done;
         }
-        if (at == 0 && (k < 8 || rd64(buf) != 0x50)) {
+        if (at == 0 && !r.packed && (k < 8 || rd64(buf) != 0x50)) {
             fail(err, errn, "The game data does not start with a RomFS header.");
             goto done;
         }
@@ -880,11 +1122,23 @@ bool stage_romfs(Nca *base, Nca *patch, const char *path, ProgressFn cb, RomfsRe
         }
     }
     fsha256_final(&whole, out->sha256);
+
+    // 4. a packed data level, now checked: unpacked into romfs.bin
+    if (r.packed) {
+        r.pk_file = f;
+        f = NULL;
+        bool unpacked = unpack(&r, path, &pr, out);
+        vfs_close(r.pk_file);
+        vfs_delete(VFS_SD, packed);
+        if (!unpacked) goto done;
+        out->packed = true;
+        out->packed_size = data_size;
+    }
     out->restarts = (base->ncz ? ncz_restarts(base->ncz) : 0) + (patch && patch->ncz ? ncz_restarts(patch->ncz) : 0);
     ok = true;
 done:
     if (f) vfs_close(f);
-    if (!ok && created) vfs_delete(VFS_SD, path);
+    if (!ok && created) vfs_delete(VFS_SD, staged);
     free(hashes);
     free(buf);
     free(r.ext);

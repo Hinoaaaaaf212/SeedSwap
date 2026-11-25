@@ -6,7 +6,9 @@
 //     a PFS0 image padded to 32 MiB.
 //   * RomFS: the game data from the base game, or the base game patched by the update (BKTR:
 //     indirect storage + AES-CTR-EX), checked against the game's own hash tree: the hash levels
-//     against the master hash before anything is written, every data block when read back.
+//     against the master hash before anything is written, every data block when read back. Newer games pack
+//     that data (the compression layer, LZ4 blocks above the hash tree): it is staged and checked as stored,
+//     beside romfs.bin, then unpacked into romfs.bin, which is read back against its SHA-256.
 //   * The game's permissions compared with the host's, in sentences.
 #pragma once
 #include <stdbool.h>
@@ -69,10 +71,16 @@ typedef struct {
     bool patched;              // base game + update
     uint64_t from_base, from_patch;
     uint64_t restarts;         // times a compressed dump was read again from its start
+    bool packed;               // the game data was stored packed (the compression layer) and was unpacked
+    uint64_t packed_size;      // its stored size then
 } RomfsResult;
 
 // Writes the RomFS of base (patched by `patch` when not NULL) to path on the SD card, then reads it
 // back and checks every block. On failure (or when cb says stop) the file is deleted.
 bool stage_romfs(Nca *base, Nca *patch, const char *path, ProgressFn cb, RomfsResult *out, char *err, size_t errn);
-// The size romfs.bin will have, without reading the data (for the free-space check).
+// The size romfs.bin will have, without reading the data (for the free-space check). For packed game data
+// (stage_romfs_packed) it is the stored size: the unpacked size is only known once the data is read.
 bool stage_romfs_size(Nca *base, Nca *patch, uint64_t *size, char *err, size_t errn);
+bool stage_romfs_packed(Nca *base, Nca *patch);
+// One LZ4 block (raw block format): true when src unpacks to exactly dst_n bytes.
+bool stage_lz4_block(const uint8_t *src, size_t src_n, uint8_t *dst, size_t dst_n);

@@ -614,6 +614,10 @@ static const uint8_t *romfs_file(const uint8_t *img, size_t size, const char *na
     return NULL;
 }
 
+const uint8_t *pkg_romfs_file(const uint8_t *img, size_t size, const char *name, size_t *len) {
+    return romfs_file(img, size, name, len);
+}
+
 static bool read_control(Pkg *p, int entry, PkgControl *out) {
     char err[200];
     Nca n;

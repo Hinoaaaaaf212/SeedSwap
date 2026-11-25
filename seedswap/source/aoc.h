@@ -16,7 +16,7 @@
 
 #define AOC_DIRECTORY "__aoc"
 #define AOC_MAX_INDEX 9999
-#define AOC_MAX_ADD_ONS 16
+#define AOC_MAX_ADD_ONS 100
 #define AOC_NOT_FOUND 0x7D402u     // nn::fs::ResultTargetNotFound
 
 enum { AOC_COUNT, AOC_LIST, AOC_QUERY, AOC_MOUNT, AOC_TARGETS };
@@ -30,6 +30,10 @@ typedef struct {
 
 // Whether main asks for add-on content at all (imports one of the four functions).
 bool aoc_main_uses(const NsoImage *main);
+// Whether a module imports a function that mounts add-on content (MountAddOnContent,
+// QueryMountAddOnContentCacheSize); true when its symbols cannot be read. A game none of whose
+// modules (sdk aside) does never opens a pack's files: Super Smash Bros. Ultimate only counts and lists.
+bool aoc_module_mounts(const NsoImage *nso);
 // Finds everything in the game's sdk and main. False with a sentence in err when the game does not fit.
 bool aoc_locate(const NsoImage *sdk, const NsoImage *main, AocSites *out, char *err, size_t errn);
 // Writes the four bodies into sdk->image (text). Returns the number of changed instructions, or -1.
@@ -45,16 +49,19 @@ typedef int (*RomfsReadFn)(void *user, uint64_t off, void *buf, size_t n);  // 0
 
 typedef struct {
     const char *name;          // a plain file name in /__aoc
-    const uint8_t *data;
+    const uint8_t *data;       // NULL: written by the caller at file_offset (a big image copied from its dump)
     size_t size;
+    uint64_t at;               // non-zero: already in the image at this offset (not copied again)
 } RomfsNewFile;
 
 typedef struct {
     uint8_t old_header[0x50], new_header[0x50];
     uint64_t base_size;        // the image the tables belong to (its old end)
-    uint64_t append_at;        // where the tail goes (normally base_size; later when a tail is replaced)
+    uint64_t append_at;        // where the new data starts (normally base_size; later when a tail is replaced)
     uint64_t tables_at, new_size;
-    uint8_t *tail;             // malloc'd
+    uint64_t tail_at;          // where `tail` goes: append_at, after the files the caller writes (data NULL)
+    uint64_t streamed;         // bytes the caller writes, from append_at to tail_at
+    uint8_t *tail;             // malloc'd: the files held in memory, then the tables
     size_t tail_size;
     uint64_t file_offset[AOC_MAX_ADD_ONS];  // where each new file lies in the image
 } RomfsPlan;

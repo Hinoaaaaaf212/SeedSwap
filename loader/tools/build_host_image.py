@@ -7,7 +7,8 @@
            (live sizes). Spare slots get placeholder IDs (01ffffffffffN000) that no game has; SeedSwap
            gives one to another installed game on the console (retitle). The save guard runs in hosting
            mode (program ffffffffffffffff): every listed title, only while it runs a hosted game, may open
-           only the guard user's saves. Writes the usual four files plus hosts.ini.
+           only the guard user's saves. Writes the usual four files plus hosts.ini. --sig-patch adds the
+           two FS signature-check hooks (fs-sig-profile.json) for games installed for HOME.
   retitle  --image DIR --slot OLD --to NEW --out DIR
            What SeedSwap does on the console, for checking: every ASCII copy of OLD in context.bin and
            image.lua and the one u64 in the games table become NEW; image.lua's context checksums and
@@ -49,16 +50,20 @@ def spare_id(n: int) -> str:
     return PLACEHOLDER % n
 
 
+ROMFS_PARTS = 8    # romfs.bin.00 .. romfs.bin.07: a RomFS split for FAT32 in parts of 0xFFFF0000 bytes (the runtime joins the parts present)
+
+
 def listing(slots) -> str:
     rows = ["D /ns2jb-modloader/contents/"]
     for s in slots:
         rows += ["D /ns2jb-modloader/contents/%s/" % s,
                  "F 33554432 /ns2jb-modloader/contents/%s/exefs.nsp" % s,
                  "F 33554432 /ns2jb-modloader/contents/%s/romfs.bin" % s]
+        rows += ["F 33554432 /ns2jb-modloader/contents/%s/romfs.bin.%02d" % (s, k) for k in range(ROMFS_PARTS)]
     return "\n".join(rows) + "\n"
 
 
-def build(hosts, spares, guard_user, out: Path, quiet=False, first_spare=1):
+def build(hosts, spares, guard_user, out: Path, quiet=False, first_spare=1, sig_patch=False):
     slots = list(hosts) + [spare_id(first_spare + i) for i in range(spares)]
     for s in slots:
         if not re.fullmatch(r"01[0-9a-f]{14}", s):
@@ -69,7 +74,7 @@ def build(hosts, spares, guard_user, out: Path, quiet=False, first_spare=1):
     tree = out / "sd-tree.txt"
     put(tree, listing(slots))
     cmd = ["node", str(HERE / "build_install_image.cjs"), "--tree", str(tree), "--guard-program", GUARD_ALL,
-           "--guard-user", guard_user, "--out", str(out)]
+           "--guard-user", guard_user, "--out", str(out)] + (["--sig-patch"] if sig_patch else [])
     for s in slots:
         cmd += ["--title", s]
     r = subprocess.run(cmd, capture_output=True, text=True)
@@ -202,7 +207,7 @@ def check():
                 assert len(ca) == len(cb) and sorted(ca) == sorted(cb)
                 print("retitle %s -> %s: same bytes as a fresh build in another order (games table sorted "
                       "differently)" % (spare_id(1), new))
-            r = subprocess.run(["wsl", "-u", "super", "-e", "lua5.1", "-e",
+            r = subprocess.run(["wsl", "-e", "lua5.1", "-e",
                                 'package.path="sd/kaihen/ml/?.lua;"..package.path local I=require("ml_image") '
                                 'local function rd(p,m) local f=assert(io.open(p,"rb")) local s=f:read("*a") f:close() return s end '
                                 'local img=I.load(rd,"%s") print("ml_image.load ok, "..#img.plan.titles.." titles")' % wsl(a)],
@@ -246,6 +251,8 @@ def main(argv=None):
     b.add_argument("--spares", type=int, default=2)
     b.add_argument("--guard-user", default=GUARD_USER)
     b.add_argument("--out", type=Path, required=True)
+    b.add_argument("--sig-patch", action="store_true",
+                   help="also turn off FS's NCA header signature check while the loader is in (games installed for HOME)")
     r = sub.add_parser("retitle")
     r.add_argument("--image", type=Path, required=True)
     r.add_argument("--slot", required=True)
@@ -261,7 +268,7 @@ def main(argv=None):
         hosts = [h.lower() for h in a.host] or [SEEDSOW]
         if not 0 <= a.spares <= 15:
             ap.error("--spares 0..15")
-        print("slots:", build(hosts, a.spares, a.guard_user.lower(), a.out))
+        print("slots:", build(hosts, a.spares, a.guard_user.lower(), a.out, sig_patch=a.sig_patch))
     elif a.cmd == "retitle":
         retitle(a.image, a.slot.lower(), a.to.lower(), a.out)
         print("wrote", a.out)

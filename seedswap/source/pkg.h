@@ -122,6 +122,9 @@ bool nca_read_ctr_at(Nca *n, uint64_t pos, uint64_t ctr_off, void *buf, size_t l
 // Bytes of a section, decrypted with the section's own counter; off within the section.
 bool nca_section_read(Nca *n, const NcaSection *s, uint64_t off, void *buf, size_t len);
 
+// A root file of a small RomFS image in memory (the data level), or NULL.
+const uint8_t *pkg_romfs_file(const uint8_t *img, size_t size, const char *name, size_t *len);
+
 // ---- programs, name and icon
 typedef struct {
     int index;                 // the program's number in the title (id offset)

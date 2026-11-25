@@ -138,7 +138,14 @@ void aes128_ctr(const Aes128 *ctx, const uint8_t counter[16], size_t skip, const
     }
 }
 
-void aes128_xts_decrypt(const uint8_t key[32], uint64_t first_sector, const uint8_t *in, uint8_t *out, size_t n) {
+void aes128_ecb_encrypt(const uint8_t key[16], const uint8_t *in, uint8_t *out, size_t n) {
+    Aes128 ctx;
+    aes128_init(&ctx, key);
+    for (size_t i = 0; i + 16 <= n; i += 16) aes128_encrypt_block(&ctx, in + i, out + i);
+    memset(&ctx, 0, sizeof(ctx));
+}
+
+static void xts(const uint8_t key[32], uint64_t first_sector, const uint8_t *in, uint8_t *out, size_t n, bool enc) {
     Aes128 data, tweak;
     aes128_init(&data, key);
     aes128_init(&tweak, key + 16);
@@ -151,7 +158,8 @@ void aes128_xts_decrypt(const uint8_t key[32], uint64_t first_sector, const uint
             const uint8_t *src = in + sector * 0x200 + j;
             uint8_t *dst = out + sector * 0x200 + j;
             for (int i = 0; i < 16; i++) b[i] = src[i] ^ t[i];
-            aes128_decrypt_block(&data, b, b);
+            if (enc) aes128_encrypt_block(&data, b, b);
+            else aes128_decrypt_block(&data, b, b);
             for (int i = 0; i < 16; i++) dst[i] = b[i] ^ t[i];
             uint8_t carry = 0;  // tweak times x in GF(2^128), little-endian bytes
             for (int i = 0; i < 16; i++) {
@@ -164,6 +172,14 @@ void aes128_xts_decrypt(const uint8_t key[32], uint64_t first_sector, const uint
     }
     memset(&data, 0, sizeof(data));
     memset(&tweak, 0, sizeof(tweak));
+}
+
+void aes128_xts_decrypt(const uint8_t key[32], uint64_t first_sector, const uint8_t *in, uint8_t *out, size_t n) {
+    xts(key, first_sector, in, out, n, false);
+}
+
+void aes128_xts_encrypt(const uint8_t key[32], uint64_t first_sector, const uint8_t *in, uint8_t *out, size_t n) {
+    xts(key, first_sector, in, out, n, true);
 }
 
 void nca_counter(uint64_t upper, uint64_t nca_offset, uint8_t out[16]) {

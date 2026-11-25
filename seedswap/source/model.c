@@ -498,6 +498,22 @@ bool lib_dlc_add(Library *L, int idx, const char *nsp_path, const char *keys_pat
                    errn);
 }
 
+bool lib_dlc_add_many(Library *L, int idx, const char *const *nsp_paths, int npaths, const char *keys_path,
+                      const char *const *siblings, int nsiblings, ProgressFn cb, DlcResult *res, char *err, size_t errn) {
+    Game *g = &L->games[idx];
+    const char *why = lib_dlc_blocker(L, idx);
+    if (why) {
+        snprintf(err, errn, "%s", why);
+        return false;
+    }
+    char gdir[160], folder[160];
+    const Host *h = lib_game_host(L, g);
+    snprintf(gdir, sizeof(gdir), SS_ROOT "/games/%s", g->id);
+    snprintf(folder, sizeof(folder), "%s", h ? h->dir : gdir);
+    return dlc_add_many(nsp_paths, npaths, keys_path, folder, gdir, g->title_id, g->version_code, siblings, nsiblings,
+                        cb, res, err, errn);
+}
+
 bool lib_dlc_remove(Library *L, int idx, char *err, size_t errn) {
     Game *g = &L->games[idx];
     char exefs[256], gdir[160];

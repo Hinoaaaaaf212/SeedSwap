@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "convert.h"
+#include "home.h"
 #include "gfx.h"
 #include "model.h"
 #include "nsp.h"
@@ -34,8 +35,10 @@ static const char *TAB_NAMES[TAB_COUNT] = {"Library", "Convert", "Saves", "Log"}
 typedef enum { DLG_NONE, DLG_CONFIRM, DLG_MESSAGE, DLG_PROGRESS, DLG_CHOOSE, DLG_USERS, DLG_HOSTS } DlgKind;
 typedef enum {
     ACT_NONE, ACT_SWITCH, ACT_BACKUP, ACT_RESTORE, ACT_COMPAT, ACT_COMPAT_REVERT, ACT_DLC_ADD, ACT_DLC_REMOVE, ACT_CONVERT,
-    ACT_DELETE_DUMPS, ACT_SET_USER, ACT_ADD_HOST, ACT_MOVE
+    ACT_DELETE_DUMPS, ACT_SET_USER, ACT_ADD_HOST, ACT_MOVE, ACT_HOME_ADD, ACT_HOME_REMOVE
 } Action;
+
+#define DEL_MAX 104   // a game's base and update, or up to AOC_MAX_ADD_ONS DLC dumps
 
 typedef struct { bool app; int i; } HostRow;   // a row of the host list: a host, or an installed game
 
@@ -55,6 +58,8 @@ static struct {
     Action act;
     int act_arg;
     char act_path[256];  // the dump an action works on
+    int dlc_all_n;       // the Add DLC dialog: the game's dumps on the card not built in yet (X adds them all)
+    bool dlc_all;        // ACT_DLC_ADD with all of them
     char dlg_title[128], dlg_body[1400];
     Color dlg_color;
     float prog;
@@ -68,7 +73,12 @@ static struct {
     ConvertPlan plan;      // the dumps being converted
     int plan_prog, choose_sel;
     bool allow_older;      // the user confirmed converting an older version
-    char del_paths[2][320];  // the dumps a finished conversion offers to delete
+    char home_base[320], home_update[320];   // the dumps the Add to HOME dialog installs
+    HomeInstall home;      // what it installs (home_check)
+    bool home_ours;        // SeedSwap added this game to HOME before (X removes it)
+    char del_paths[DEL_MAX][320];  // the dumps a finished conversion or DLC add offers to delete
+    int del_n;
+    bool del_dlc;            // they are DLC dumps
     int64_t del_bytes;
     UserRow users[USERS_MAX];  // the play-user list (users.h)
     int user_count, user_sel;
@@ -172,6 +182,13 @@ static void scrollbar(Rect area, int top, int count, int per_page) {
 }
 
 static void panel(Rect r) { gfx_round(r, 18, C_PANEL); }
+
+// the add-ons game.ini lists as built in; more than 3 are shown as a number
+static int dlc_count(const Game *g) {
+    int n = g->dlc[0] ? 1 : 0;
+    for (const char *p = g->dlc; *p; p++) n += *p == ',';
+    return n;
+}
 
 static void info_row(int x, int y, int w, const char *key, const char *val, Color vc) {
     gfx_text(FONT_SMALL, x, y + 2, C_FAINT, key);
@@ -412,8 +429,9 @@ static void draw_dialog(void) {
             if (i == U.user_sel) gfx_round_outline(row, 12, 2, off ? C_FAINT : C_ACCENT);
             gfx_text_ellipsis(FONT_BODY_BOLD, row.x + 16, row.y + 4, row.w - 200, off ? C_FAINT : C_TEXT, u->name);
             char sub[200];
-            snprintf(sub, sizeof(sub), "%.8s\xe2\x80\xa6%s%s", u->hex, u->hex + 24,
-                     u->exploit ? "  \xe2\x80\xa2  has the exploit save" : u->loader ? "  \xe2\x80\xa2  protected by the loader" : "");
+            snprintf(sub, sizeof(sub), "%.8s\xe2\x80\xa6%s%s%s", u->hex, u->hex + 24,
+                     u->exploit ? "  \xe2\x80\xa2  has the exploit save" : u->loader ? "  \xe2\x80\xa2  protected by the loader" : "",
+                     u->no_save && !u->exploit && !u->loader ? "  \xe2\x80\xa2  no save yet" : "");
             gfx_text_ellipsis(FONT_SMALL, row.x + 16, row.y + row.h - 24, row.w - 32, C_DIM, sub);
             const char *tag = u->play ? "Play user" : u->exploit || u->loader ? "Never" : u->kept_out ? "Kept out" : NULL;
             if (tag) {
@@ -453,6 +471,7 @@ static void draw_dialog(void) {
         const char *ok = U.act == ACT_SWITCH ? "Switch" : U.act == ACT_RESTORE ? "Restore" : U.act == ACT_DLC_ADD ? "Add"
                        : U.act == ACT_DLC_REMOVE ? "Remove" : U.act == ACT_COMPAT_REVERT ? "Remove"
                        : U.act == ACT_CONVERT ? (U.plan.programs[U.plan_prog].library >= 0 ? "Update" : "Convert")
+                       : U.act == ACT_HOME_ADD ? (U.home_ours ? "Add again" : "Add")
                        : U.act == ACT_DELETE_DUMPS ? "Delete" : U.act == ACT_SET_USER ? "Choose"
                        : U.act == ACT_ADD_HOST ? "Set up" : U.act == ACT_MOVE ? "Move" : "Back up";
         const char *no = U.act == ACT_DELETE_DUMPS ? "Keep" : "Cancel";
@@ -460,6 +479,16 @@ static void draw_dialog(void) {
         hint(bx, by, "B", no);
         bx -= 28 + hint_w("A", ok);
         hint(bx, by, "A", ok);
+        if (U.act == ACT_DLC_ADD && U.dlc_all_n > 1) {
+            char all[32];
+            snprintf(all, sizeof(all), "Add all %d", U.dlc_all_n);
+            bx -= 28 + hint_w("X", all);
+            hint(bx, by, "X", all);
+        }
+        if (U.act == ACT_HOME_ADD && U.home_ours) {
+            bx -= 28 + hint_w("X", "Remove");
+            hint(bx, by, "X", "Remove");
+        }
     } else {
         bx -= hint_w("A", "OK");
         hint(bx, by, "A", "OK");
@@ -468,6 +497,17 @@ static void draw_dialog(void) {
 
 static void redraw(void);
 static const char *when_text(void);
+static bool progress_cb(float frac, const char *text);
+
+#ifndef ADD_TO_HOME
+#define ADD_TO_HOME 1   // 0 in the stable build: no Add to HOME (X in Convert)
+#endif
+
+// Progress of a job B can stop (the HOME install).
+static bool home_progress(float frac, const char *text) {
+    progress_cb(frac, text);
+    return !plat_poll_stop();
+}
 
 static bool progress_cb(float frac, const char *text) {
     uint64_t now = plat_ms();
@@ -570,17 +610,75 @@ static void run_action(void) {
         for (int i = 0; game && i < U.nsp_count; i++)
             if (U.nsps[i].kind == NSP_DLC && nsp_base_id(U.nsps[i].title_id) == game && strcmp(U.nsps[i].path, U.act_path))
                 siblings[nsib++] = U.nsps[i].path;
-        bool ok = lib_dlc_add(L, U.act_arg, U.act_path, U.keys_path, siblings, nsib, progress_cb, &res, err, sizeof(err));
+        bool all = U.dlc_all;
+        U.dlc_all = false;
+        bool ok;
+        if (all) {   // every dump of the game on the card that is not built in yet, in one go
+            const char *paths[MAX_NSPS];
+            int np = 0;
+            paths[np++] = U.act_path;
+            for (int i = 0; game && i < U.nsp_count; i++)
+                if (U.nsps[i].kind == NSP_DLC && nsp_base_id(U.nsps[i].title_id) == game &&
+                    strcmp(U.nsps[i].path, U.act_path) && !lib_dlc_built_in(&L->games[U.act_arg], U.nsps[i].title_id))
+                    paths[np++] = U.nsps[i].path;
+            ok = lib_dlc_add_many(L, U.act_arg, paths, np, U.keys_path, siblings, nsib, progress_cb, &res, err,
+                                  sizeof(err));
+        } else
+            ok = lib_dlc_add(L, U.act_arg, U.act_path, U.keys_path, siblings, nsib, progress_cb, &res, err, sizeof(err));
         bool active = L->games[U.act_arg].active;
+        // the dumps given (with their IDs, before the list is read again), to offer deleting the ones now in
+        static char tried[DEL_MAX][320];
+        static uint64_t tried_id[DEL_MAX];
+        int ntried = 0;
+        for (int i = 0; game && i < U.nsp_count && ntried < DEL_MAX; i++)
+            if (U.nsps[i].kind == NSP_DLC && nsp_base_id(U.nsps[i].title_id) == game &&
+                (all || !strcmp(U.nsps[i].path, U.act_path))) {
+                snprintf(tried[ntried], sizeof(tried[0]), "%s", U.nsps[i].path);
+                tried_id[ntried++] = U.nsps[i].title_id;
+            }
+        char gid[24];
+        snprintf(gid, sizeof(gid), "%s", L->games[U.act_arg].id);
         reload();
-        if (ok && res.warning[0])
-            message(C_WARN, "Added, but check it", "Added %s to %s.\n\n%s", res.name, name, res.warning);
-        else if (ok)
-            message(C_ACCENT, "DLC added", "Added %s to %s. %s", res.name, name,
-                    active ? when_text() : "It's there next time you switch to the game.");
-        else
+        if (!ok) {
             message(C_BAD, "Not added", "%s\n\n%s wasn't changed.", err, name);
-        break;
+            break;
+        }
+        char body[1100];
+        bool warn = res.warning[0] || res.skipped[0];
+        if (warn)
+            snprintf(body, sizeof(body), "Added %s to %s.%s%s%s%s", res.name, name, res.warning[0] ? "\n\n" : "",
+                     res.warning, res.skipped[0] ? "\n\nLeft out: " : "", res.skipped);
+        else
+            snprintf(body, sizeof(body), "Added %s to %s. %s", res.name, name,
+                     active ? when_text() : "It's there next time you switch to the game.");
+        // the dumps that went in are offered for deleting, as after a conversion
+        int gi = find_game(gid);
+        U.del_bytes = 0;
+        U.del_n = 0;
+        U.del_dlc = true;
+        memset(U.del_paths, 0, sizeof(U.del_paths));
+        for (int t = 0; gi >= 0 && t < ntried; t++) {
+            int64_t sz = 0;
+            bool d = false;
+            if (lib_dlc_built_in(&L->games[gi], tried_id[t]) && vfs_stat(VFS_SD, tried[t], &d, &sz) == 0 && !d) {
+                snprintf(U.del_paths[U.del_n++], sizeof(U.del_paths[0]), "%s", tried[t]);
+                U.del_bytes += sz;
+            }
+        }
+        if (!U.del_n) {
+            message(warn ? C_WARN : C_ACCENT, warn ? "Added, but check it" : "DLC added", "%s", body);
+            break;
+        }
+        char freed[32];
+        fmt_bytes(U.del_bytes, freed, sizeof(freed));
+        U.dlg = DLG_CONFIRM;
+        U.act = ACT_DELETE_DUMPS;
+        U.dlg_color = warn ? C_WARN : C_ACCENT;
+        snprintf(U.dlg_title, sizeof(U.dlg_title), "%s", warn ? "Added, but check it" : "DLC added");
+        snprintf(U.dlg_body, sizeof(U.dlg_body), "%s\n\nDelete the %s to free %s? Keep %s if you'll update the game here "
+                 "later: its DLC is added back from %s.", body, U.del_n == 1 ? "dump" : "dumps", freed,
+                 U.del_n == 1 ? "it" : "them", U.del_n == 1 ? "that file" : "these files");
+        return;
     }
     case ACT_DLC_REMOVE: {
         char name[128];
@@ -589,6 +687,27 @@ static void run_action(void) {
         reload();
         if (ok) message(C_ACCENT, "DLC removed", "%s no longer has its DLC.", name);
         else message(C_BAD, "Not removed", "%s", err);
+        break;
+    }
+    case ACT_HOME_ADD: {
+        char title[200];
+        snprintf(title, sizeof(title), "Adding %s to HOME", U.home.name);
+        begin_progress(title);
+        HomeInstall res;
+        plat_keep_awake(true);
+        bool ok = home_install(U.home_base, U.home_update[0] ? U.home_update : NULL, U.keys_path, home_progress, &res, err,
+                               sizeof(err));
+        plat_keep_awake(false);
+        if (!ok) message(C_BAD, "Not added", "%s", err);
+        else message(C_ACCENT, "Added to HOME", "%s is on the HOME menu. It starts only while the loader is in.\n\n"
+                     "It has its own save there, separate from SeedSwap's.", res.name);
+        break;
+    }
+    case ACT_HOME_REMOVE: {
+        begin_progress("Removing from HOME");
+        progress_cb(-1, U.home.name);
+        if (!home_remove(U.home.app_id, err, sizeof(err))) message(C_BAD, "Not removed", "%s", err);
+        else message(C_ACCENT, "Removed from HOME", "%s is no longer on the HOME menu. Its save there is kept.", U.home.name);
         break;
     }
     case ACT_CONVERT: {
@@ -615,6 +734,7 @@ static void run_action(void) {
                  res.warnings[0] ? "\n\n" : "", res.warnings);
         if (res.replaced) snprintf(place, sizeof(place), ", replacing %s (save kept)", res.replaced_version);
         U.del_bytes = 0;
+        U.del_dlc = false;
         int ndel = 0;
         memset(U.del_paths, 0, sizeof(U.del_paths));
         const char *paths[2] = {U.plan.base_path, strcmp(U.plan.update_path, U.plan.base_path) ? U.plan.update_path : ""};
@@ -626,6 +746,7 @@ static void run_action(void) {
                 U.del_bytes += sz;
             }
         }
+        U.del_n = ndel;
         char freed[32], head[600];
         fmt_bytes(U.del_bytes, freed, sizeof(freed));
         snprintf(head, sizeof(head), "%s %s is in the library%s (%s, took %d:%02d). %s", res.name, res.version, place,
@@ -644,14 +765,15 @@ static void run_action(void) {
     }
     case ACT_DELETE_DUMPS: {
         int done = 0;
-        for (int k = 0; k < 2; k++)
+        for (int k = 0; k < U.del_n && k < DEL_MAX; k++)
             if (U.del_paths[k][0] && vfs_delete(VFS_SD, U.del_paths[k]) == 0) {
-                app_log("deleted the dump %s after converting it", U.del_paths[k]);
+                app_log("deleted the dump %s after %s", U.del_paths[k], U.del_dlc ? "adding it" : "converting it");
                 done++;
             }
         reload();
         if (U.sel[TAB_CONVERT] >= U.nsp_count) U.sel[TAB_CONVERT] = U.nsp_count ? U.nsp_count - 1 : 0;
-        message(C_ACCENT, "Dumps deleted", "Deleted %d file%s. The game stays in the library.", done, done == 1 ? "" : "s");
+        message(C_ACCENT, "Dumps deleted", "Deleted %d file%s. %s", done, done == 1 ? "" : "s",
+                U.del_dlc ? "The DLC stays in the game." : "The game stays in the library.");
         break;
     }
     case ACT_ADD_HOST: {
@@ -690,7 +812,8 @@ static void run_action(void) {
         if (ok)
             message(C_ACCENT, "Play user set", "Games now run on %s.%s%s", row.name,
                     restart ? again : "",
-                    U.lib.play_user_has_save ? "" : "\n\nStart the host game on this user once before switching games.");
+                    U.lib.play_user_has_save ? "" : "\n\nStart the host game on this user once before switching games. "
+                                                     "Don't have it? Pick another host in Library (-).");
         else message(C_BAD, "Not changed", "%s", err);
         break;
     }
@@ -957,7 +1080,8 @@ static void draw_library(void) {
         fy += 34;
     }
     if (g->dlc[0]) {
-        snprintf(v, sizeof(v), "%s built in", g->dlc_names[0] ? g->dlc_names : g->dlc);
+        if (dlc_count(g) > 3) snprintf(v, sizeof(v), "%d add-ons built in", dlc_count(g));
+        else snprintf(v, sizeof(v), "%s built in", g->dlc_names[0] ? g->dlc_names : g->dlc);
         info_row(fx, fy, fw, "DLC", v, C_ACCENT);
         fy += 34;
     }
@@ -1377,6 +1501,52 @@ static void convert_confirm(int k) {
              size, p->note[0] ? "\n\nNote: " : "", p->note, lib);
 }
 
+// X on a game dump in the Convert tab: the game installed as a console title with its own HOME icon.
+static void home_offer(void) {
+    const NspInfo *n = &U.nsps[U.sel[TAB_CONVERT]];
+    if (!n->inspected) nsp_inspect(&U.nsps[U.sel[TAB_CONVERT]]);
+    if (!U.keys_path[0]) {
+        message(C_WARN, "prod.keys is missing", "Put your console's prod.keys at SD:/switch/prod.keys.");
+        return;
+    }
+    if (!n->ok || n->kind == NSP_DLC) {
+        message(C_WARN, "Not a game", "Only a base game (with or without its update) can go on HOME.");
+        return;
+    }
+    const NspInfo *base, *update;
+    if (!pick_dumps(n, &base, &update)) {
+        if (n->cnmts < 2) {
+            message(C_WARN, "Base game needed", "%s is an update. Put the base game's dump on the SD card too.", n->name);
+            return;
+        }
+        base = n;   // it may hold the base game too
+        update = NULL;
+    }
+    char err[400];
+    begin_progress("Reading the dumps");
+    progress_cb(-1, update ? "The base game and its update" : "The base game");
+    bool ok = home_check(base->path, update ? update->path : NULL, U.keys_path, &U.home, err, sizeof(err));
+    U.dlg = DLG_NONE;
+    if (!ok) {
+        message(C_BAD, "Can't add to HOME", "%s", err);
+        return;
+    }
+    snprintf(U.home_base, sizeof(U.home_base), "%s", base->path);
+    snprintf(U.home_update, sizeof(U.home_update), "%s", update ? update->path : "");
+    U.home_ours = home_is_ours(U.home.app_id);
+    char size[32], ver[48];
+    fmt_bytes(U.home.bytes, size, sizeof(size));
+    if (U.home.display_version[0]) snprintf(ver, sizeof(ver), "v%s", U.home.display_version);
+    else snprintf(ver, sizeof(ver), "version %u", U.home.version);
+    U.act = ACT_HOME_ADD;
+    U.dlg = DLG_CONFIRM;
+    U.dlg_color = C_ACCENT;
+    snprintf(U.dlg_title, sizeof(U.dlg_title), "Add %s to HOME?", U.home.name);
+    snprintf(U.dlg_body, sizeof(U.dlg_body), "Installs it on the SD card with its own HOME icon (%s, %s). "
+             "It starts only while the loader is in, and keeps its own save.%s", ver, size,
+             U.home_ours ? "\n\nSeedSwap added it before: A puts it there again, X takes it off HOME." : "");
+}
+
 static void convert_activate(void) {
     NspInfo *n = &U.nsps[U.sel[TAB_CONVERT]];
     if (!n->inspected) nsp_inspect(n);
@@ -1408,8 +1578,12 @@ static void convert_activate(void) {
         U.act = ACT_DLC_REMOVE;
         U.dlg_color = C_WARN;
         snprintf(U.dlg_title, sizeof(U.dlg_title), "Remove DLC from %s?", g->name);
-        snprintf(U.dlg_body, sizeof(U.dlg_body), "This removes all of %s's DLC (%s). Your save isn't touched.", g->name,
-                 g->dlc_names[0] ? g->dlc_names : n->name);
+        if (dlc_count(g) > 3)
+            snprintf(U.dlg_body, sizeof(U.dlg_body), "This removes all of %s's DLC (%d add-ons). Your save isn't touched.",
+                     g->name, dlc_count(g));
+        else
+            snprintf(U.dlg_body, sizeof(U.dlg_body), "This removes all of %s's DLC (%s). Your save isn't touched.", g->name,
+                     g->dlc_names[0] ? g->dlc_names : n->name);
         return;
     }
     if (!U.keys_path[0]) {
@@ -1419,9 +1593,20 @@ static void convert_activate(void) {
     }
     U.act = ACT_DLC_ADD;
     U.dlg_color = C_ACCENT;
+    U.dlc_all = false;
+    U.dlc_all_n = 0;  // this game's dumps on the card that are not built in yet, this one too
+    for (int i = 0; i < U.nsp_count; i++)
+        if (U.nsps[i].kind == NSP_DLC && nsp_base_id(U.nsps[i].title_id) == nsp_base_id(n->title_id) &&
+            !lib_dlc_built_in(g, U.nsps[i].title_id))
+            U.dlc_all_n++;
     snprintf(U.dlg_title, sizeof(U.dlg_title), "Add DLC to %s?", g->name);
-    snprintf(U.dlg_body, sizeof(U.dlg_body), "%s will be added to %s. You can remove it again later.%s", n->name, g->name,
-             g->host >= 0 ? "\n\nDon't do this while its host game is running." : "");
+    snprintf(U.dlg_body, sizeof(U.dlg_body), "%s will be added to %s. You can remove it again later.", n->name, g->name);
+    if (U.dlc_all_n > 1)
+        snprintf(U.dlg_body + strlen(U.dlg_body), sizeof(U.dlg_body) - strlen(U.dlg_body),
+                 "\n\nOr press X to add all %d of its DLC on the SD card at once.", U.dlc_all_n);
+    if (g->host >= 0)
+        snprintf(U.dlg_body + strlen(U.dlg_body), sizeof(U.dlg_body) - strlen(U.dlg_body),
+                 "\n\nDon't do this while its host game is running.");
 }
 
 // ---- Saves
@@ -1553,8 +1738,10 @@ void ui_draw(void) {
     case TAB_CONVERT: {
         draw_convert();
         bool dlc = U.nsp_count && U.nsps[U.sel[TAB_CONVERT]].kind == NSP_DLC;
-        Hint h[] = {{"A", dlc ? "Add / remove DLC" : "Convert"}, {"Y", "Refresh"}, {"+", "Exit"}};
-        draw_footer(U.nsp_count ? h : h + 1, U.nsp_count ? 3 : 2, st, sc);
+        Hint h[] = {{"A", dlc ? "Add / remove DLC" : "Convert"}, {"X", "Add to HOME"}, {"Y", "Refresh"}, {"+", "Exit"}};
+        bool x = ADD_TO_HOME && !dlc;
+        if (!x) h[1] = h[0];
+        draw_footer(U.nsp_count ? (x ? h : h + 1) : h + 2, U.nsp_count ? (x ? 4 : 3) : 2, st, sc);
         break;
     }
     case TAB_SAVES: {
@@ -1606,7 +1793,13 @@ bool ui_input(uint64_t b) {
     }
     if (U.dlg == DLG_CONFIRM) {
         if (b & BTN_A) run_action();
-        else if (b & BTN_B) {
+        else if ((b & BTN_X) && U.act == ACT_DLC_ADD && U.dlc_all_n > 1) {
+            U.dlc_all = true;
+            run_action();
+        } else if ((b & BTN_X) && U.act == ACT_HOME_ADD && U.home_ours) {
+            U.act = ACT_HOME_REMOVE;
+            run_action();
+        } else if (b & BTN_B) {
             bool back = U.act == ACT_SET_USER, back_hosts = U.act == ACT_ADD_HOST;   // back to the list
             int sel = U.host_sel, top = U.host_top;
             U.dlg = DLG_NONE;
@@ -1650,6 +1843,7 @@ bool ui_input(uint64_t b) {
     else if (U.tab == TAB_LIBRARY && (b & BTN_X)) library_compat();
     else if (U.tab == TAB_LIBRARY && (b & BTN_MINUS)) open_hosts();
     if (U.tab == TAB_CONVERT && (b & BTN_A) && U.nsp_count) convert_activate();
+    else if (ADD_TO_HOME && U.tab == TAB_CONVERT && (b & BTN_X) && U.nsp_count) home_offer();
     if (U.tab == TAB_SAVES) {
         if ((b & BTN_X) && U.lib.play_user_has_save) {
             U.act = ACT_BACKUP;

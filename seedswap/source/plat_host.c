@@ -11,8 +11,13 @@
 //                   "_" is an idle frame and "shot:<name>" writes <SEEDSWAP_OUT>/<name>.ppm
 //   SEEDSWAP_OUT    directory for screenshots
 //   SEEDSWAP_TIME   fixed clock text "2026-11-20 19:00" (default) for reproducible frames
+//   SEEDSWAP_HOME   directory that stands in for ncm's SD storage and ns's records (home_* calls):
+//                   placeholders/, contents/<id>.nca, meta/<key>.bin, records/<app>.txt (one key per line),
+//                   launch/<app>.txt; a record also counts for an ID in SEEDSWAP_APPS.
+//                   SEEDSWAP_HOME_FAIL=<call name> makes that call fail (home_placeholder_write, ...)
 #define _GNU_SOURCE
 #include "platform.h"
+#include "vfs_raw.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -37,9 +42,9 @@ static char g_shot[128];
 static Uid g_mounted;       // the user whose save is open
 static int64_t g_pending;   // bytes written to the save since the last commit
 
-struct VfsFile { int fd; };
+struct PVfsFile { int fd; VfsRoot r; };
 
-const char *vfs_last_error(void) { return g_err; }
+const char *pvfs_last_error(void) { return g_err; }
 
 static void host_path(VfsRoot r, const char *path, char *out, size_t n) {
     snprintf(out, n, "%s%s", r == VFS_SAVE ? g_save_dir : g_sd, path);
@@ -116,7 +121,7 @@ void plat_frame_end(void) {
 }
 
 // ---- files
-int vfs_stat(VfsRoot r, const char *path, bool *is_dir, int64_t *size) {
+int pvfs_stat(VfsRoot r, const char *path, bool *is_dir, int64_t *size) {
     if (r == VFS_SAVE && !g_save_open) return -1;
     char p[1024];
     host_path(r, path, p, sizeof(p));
@@ -127,7 +132,7 @@ int vfs_stat(VfsRoot r, const char *path, bool *is_dir, int64_t *size) {
     return 0;
 }
 
-int vfs_list(VfsRoot r, const char *dir, VfsEntry **out, int *count) {
+int pvfs_list(VfsRoot r, const char *dir, VfsEntry **out, int *count) {
     *out = NULL;
     *count = 0;
     if (r == VFS_SAVE && !g_save_open) return -1;
@@ -158,8 +163,15 @@ int vfs_list(VfsRoot r, const char *dir, VfsEntry **out, int *count) {
 
 static int save_room_for(int64_t size);
 
-int vfs_create(VfsRoot r, const char *path, int64_t size) {
+// SEEDSWAP_FAT32=1: the SD card takes no file over 4 GB, as a FAT32 card (issue 11 tests)
+static bool fat32_refuses(VfsRoot r, int64_t end) {
+    const char *m = getenv("SEEDSWAP_FAT32_MAX");
+    return r == VFS_SD && getenv("SEEDSWAP_FAT32") && end > (m ? atoll(m) : 0xFFFFFFFFll);
+}
+
+int pvfs_create(VfsRoot r, const char *path, int64_t size) {
     if (r == VFS_SAVE && (!g_save_open || save_room_for(size) != 0)) return -1;
+    if (fat32_refuses(r, size)) { snprintf(g_err, sizeof(g_err), "create %s: file too large (FAT32)", path); return -1; }
     char p[1024];
     host_path(r, path, p, sizeof(p));
     int fd = open(p, O_CREAT | O_EXCL | O_WRONLY, 0644);
@@ -178,43 +190,44 @@ static bool locked(VfsRoot r, const char *path) {
     return false;
 }
 
-VfsFile *vfs_open(VfsRoot r, const char *path, bool write) {
+PVfsFile *pvfs_open(VfsRoot r, const char *path, bool write) {
     if (locked(r, path)) { snprintf(g_err, sizeof(g_err), "open %s: locked", path); return NULL; }
     char p[1024];
     host_path(r, path, p, sizeof(p));
     int fd = open(p, write ? O_RDWR : O_RDONLY);
     if (fd < 0) { snprintf(g_err, sizeof(g_err), "open %s: %s", p, strerror(errno)); return NULL; }
-    VfsFile *f = malloc(sizeof(*f));
+    PVfsFile *f = malloc(sizeof(*f));
     f->fd = fd;
+    f->r = r;
     return f;
 }
 
-int vfs_read(VfsFile *f, int64_t off, void *buf, size_t n, size_t *got) {
+int pvfs_read(PVfsFile *f, int64_t off, void *buf, size_t n, size_t *got) {
     ssize_t k = pread(f->fd, buf, n, off);
     if (got) *got = k > 0 ? (size_t)k : 0;
     return k < 0 ? -1 : 0;
 }
-int vfs_write(VfsFile *f, int64_t off, const void *buf, size_t n) { return pwrite(f->fd, buf, n, off) == (ssize_t)n ? 0 : -1; }
-int vfs_flush(VfsFile *f) { return fsync(f->fd); }
-int64_t vfs_size(VfsFile *f) { struct stat st; return fstat(f->fd, &st) == 0 ? st.st_size : -1; }
-void vfs_close(VfsFile *f) { if (f) { close(f->fd); free(f); } }
+int pvfs_write(PVfsFile *f, int64_t off, const void *buf, size_t n) { if (fat32_refuses(f->r, off + (int64_t)n)) { snprintf(g_err, sizeof(g_err), "write: file too large (FAT32)"); return -1; } return pwrite(f->fd, buf, n, off) == (ssize_t)n ? 0 : -1; }
+int pvfs_flush(PVfsFile *f) { return fsync(f->fd); }
+int64_t pvfs_size(PVfsFile *f) { struct stat st; return fstat(f->fd, &st) == 0 ? st.st_size : -1; }
+void pvfs_close(PVfsFile *f) { if (f) { close(f->fd); free(f); } }
 
 int vfs_mkdir(VfsRoot r, const char *path) {
     char p[1024];
     host_path(r, path, p, sizeof(p));
     return mkdir(p, 0755) == 0 || errno == EEXIST ? 0 : -1;
 }
-int vfs_delete(VfsRoot r, const char *path) { char p[1024]; host_path(r, path, p, sizeof(p)); return unlink(p); }
+int pvfs_delete(VfsRoot r, const char *path) { char p[1024]; host_path(r, path, p, sizeof(p)); return unlink(p); }
 
-int vfs_rmtree(VfsRoot r, const char *path) {
+int pvfs_rmtree(VfsRoot r, const char *path) {
     VfsEntry *e;
     int n;
-    if (vfs_list(r, path, &e, &n) != 0) return -1;
+    if (pvfs_list(r, path, &e, &n) != 0) return -1;
     for (int i = 0; i < n; i++) {
         char sub[1024];
         snprintf(sub, sizeof(sub), "%s/%s", path, e[i].name);
-        if (e[i].is_dir) vfs_rmtree(r, sub);
-        else vfs_delete(r, sub);
+        if (e[i].is_dir) pvfs_rmtree(r, sub);
+        else pvfs_delete(r, sub);
     }
     free(e);
     char p[1024];
@@ -222,7 +235,7 @@ int vfs_rmtree(VfsRoot r, const char *path) {
     return rmdir(p);
 }
 
-int vfs_rename(VfsRoot r, const char *from, const char *to) {
+int pvfs_rename(VfsRoot r, const char *from, const char *to) {
     char a[1024], b[1024];
     host_path(r, from, a, sizeof(a));
     host_path(r, to, b, sizeof(b));
@@ -462,6 +475,26 @@ static int save_room_for(int64_t size) {
     return 0;
 }
 
+// SEEDSWAP_ACCOUNTS: comma-separated user IDs on the stand-in console (unset: unknown)
+int user_list_all(Uid *out, int max) {
+    const char *a = getenv("SEEDSWAP_ACCOUNTS");
+    if (!a) return -1;
+    int n = 0;
+    for (const char *p = a; *p && n < max;) {
+        size_t k = strcspn(p, ",");
+        if (k == 32) {
+            for (int i = 0; i < 16; i++) {
+                unsigned v;
+                sscanf(p + i * 2, "%2x", &v);
+                out[n].b[i] = (uint8_t)v;
+            }
+            n++;
+        }
+        p += k + (p[k] == ',');
+    }
+    return n;
+}
+
 bool user_name(const Uid *uid, char *out, size_t n) {
     const char *u = getenv("SEEDSWAP_USERS");
     if (!u) return false;
@@ -526,3 +559,150 @@ int plat_read_system_patcher(uint8_t **out, size_t *size, char *err, size_t errn
     *size = (size_t)n;
     return 0;
 }
+
+// ---- HOME installs (preview): files under SEEDSWAP_HOME
+static char g_home_err[200];
+static bool g_home_is_open;
+static void hexs(const uint8_t *b, int n, char *out) { for (int i = 0; i < n; i++) sprintf(out + 2 * i, "%02x", b[i]); }
+static int home_failed(const char *call) {
+    const char *f = getenv("SEEDSWAP_HOME_FAIL");
+    if (f && !strcmp(f, call)) { snprintf(g_home_err, sizeof(g_home_err), "%s failed (preview: SEEDSWAP_HOME_FAIL)", call); return 1; }
+    return 0;
+}
+static int home_path(char *out, size_t n, const char *dir, const char *name, const char *ext) {
+    const char *h = getenv("SEEDSWAP_HOME");
+    if (!h) { snprintf(g_home_err, sizeof(g_home_err), "no SEEDSWAP_HOME (preview)"); return -1; }
+    snprintf(out, n, "%s/%s", h, dir);
+    mkdir(out, 0755);
+    snprintf(out, n, "%s/%s/%s%s", h, dir, name, ext);
+    return 0;
+}
+const char *home_last_error(void) { return g_home_err; }
+int home_sd_open(void) {
+    if (home_failed("home_sd_open")) return -1;
+    const char *h = getenv("SEEDSWAP_HOME");
+    struct stat st;
+    if (!h || stat(h, &st) || !S_ISDIR(st.st_mode)) { snprintf(g_home_err, sizeof(g_home_err), "no SEEDSWAP_HOME folder (preview)"); return -1; }
+    g_home_is_open = true;
+    return 0;
+}
+void home_sd_close(void) { g_home_is_open = false; }
+int home_record_exists(uint64_t app) {
+    if (!g_home_is_open || home_failed("home_record_exists")) return -1;
+    char id[17], path[600];
+    snprintf(id, sizeof(id), "%016llx", (unsigned long long)app);
+    const char *a = getenv("SEEDSWAP_APPS");
+    if (a && strstr(a, id)) return 1;
+    if (home_path(path, sizeof(path), "records", id, ".txt")) return -1;
+    return access(path, F_OK) == 0;
+}
+int home_placeholder_create(const uint8_t content[16], uint8_t placeholder_out[16], int64_t size) {
+    static uint64_t counter;
+    if (!g_home_is_open || home_failed("home_placeholder_create")) return -1;
+    memset(placeholder_out, 0, 16);
+    memcpy(placeholder_out, content, 8);
+    uint64_t c = ++counter;
+    memcpy(placeholder_out + 8, &c, 8);
+    char name[33], path[600];
+    hexs(placeholder_out, 16, name);
+    if (home_path(path, sizeof(path), "placeholders", name, ".nca")) return -1;
+    FILE *f = fopen(path, "wb");
+    if (!f || ftruncate(fileno(f), size)) { if (f) fclose(f); snprintf(g_home_err, sizeof(g_home_err), "create %s", path); return -1; }
+    fclose(f);
+    return 0;
+}
+int home_placeholder_write(const uint8_t placeholder[16], int64_t off, const void *buf, size_t n) {
+    if (!g_home_is_open || home_failed("home_placeholder_write")) return -1;
+    char name[33], path[600];
+    hexs(placeholder, 16, name);
+    if (home_path(path, sizeof(path), "placeholders", name, ".nca")) return -1;
+    FILE *f = fopen(path, "r+b");
+    struct stat st;
+    if (!f || fstat(fileno(f), &st) || off < 0 || (uint64_t)off + n > (uint64_t)st.st_size ||
+        fseeko(f, off, SEEK_SET) || fwrite(buf, 1, n, f) != n) {
+        if (f) fclose(f);
+        snprintf(g_home_err, sizeof(g_home_err), "write placeholder %s at %lld", name, (long long)off);
+        return -1;
+    }
+    fclose(f);
+    return 0;
+}
+int home_placeholder_delete(const uint8_t placeholder[16]) {
+    char name[33], path[600];
+    hexs(placeholder, 16, name);
+    if (home_path(path, sizeof(path), "placeholders", name, ".nca")) return -1;
+    unlink(path);
+    return 0;
+}
+int home_content_register(const uint8_t content[16], const uint8_t placeholder[16]) {
+    if (!g_home_is_open || home_failed("home_content_register")) return -1;
+    char name[33], from[600], to[600];
+    hexs(placeholder, 16, name);
+    if (home_path(from, sizeof(from), "placeholders", name, ".nca")) return -1;
+    hexs(content, 16, name);
+    if (home_path(to, sizeof(to), "contents", name, ".nca")) return -1;
+    if (rename(from, to)) { snprintf(g_home_err, sizeof(g_home_err), "register %s", name); return -1; }
+    return 0;
+}
+bool home_content_has(const uint8_t content[16]) {
+    char name[33], path[600];
+    hexs(content, 16, name);
+    return !home_path(path, sizeof(path), "contents", name, ".nca") && access(path, F_OK) == 0;
+}
+int home_content_delete(const uint8_t content[16]) {
+    if (home_failed("home_content_delete")) return -1;
+    char name[33], path[600];
+    hexs(content, 16, name);
+    if (home_path(path, sizeof(path), "contents", name, ".nca")) return -1;
+    unlink(path);
+    return 0;
+}
+static int home_write_file(const char *dir, const char *name, const char *ext, const void *data, size_t n) {
+    char path[600];
+    if (home_path(path, sizeof(path), dir, name, ext)) return -1;
+    FILE *f = fopen(path, "wb");
+    if (!f || fwrite(data, 1, n, f) != n) { if (f) fclose(f); snprintf(g_home_err, sizeof(g_home_err), "write %s", path); return -1; }
+    fclose(f);
+    return 0;
+}
+int home_meta_set(const uint8_t key[16], const void *meta, size_t n) {
+    if (!g_home_is_open || home_failed("home_meta_set")) return -1;
+    char name[33];
+    hexs(key, 16, name);
+    return home_write_file("meta", name, ".bin", meta, n);
+}
+int home_meta_remove(const uint8_t key[16]) {
+    if (home_failed("home_meta_remove")) return -1;
+    char name[33], path[600];
+    hexs(key, 16, name);
+    if (home_path(path, sizeof(path), "meta", name, ".bin")) return -1;
+    unlink(path);
+    return 0;
+}
+int home_record_push(uint64_t app, const uint8_t (*keys)[16], int n) {
+    if (!g_home_is_open || home_failed("home_record_push")) return -1;
+    char id[17], path[600], line[40];
+    snprintf(id, sizeof(id), "%016llx", (unsigned long long)app);
+    if (home_path(path, sizeof(path), "records", id, ".txt")) return -1;
+    FILE *f = fopen(path, "ab");
+    if (!f) return -1;
+    for (int i = 0; i < n; i++) { hexs(keys[i], 16, line); fprintf(f, "%s\n", line); }
+    fclose(f);
+    return 0;
+}
+int home_record_delete(uint64_t app) {
+    if (home_failed("home_record_delete")) return -1;
+    char id[17], path[600];
+    snprintf(id, sizeof(id), "%016llx", (unsigned long long)app);
+    if (home_path(path, sizeof(path), "records", id, ".txt")) return -1;
+    unlink(path);
+    return 0;
+}
+int home_launch_version(uint64_t app, uint32_t version) {
+    if (home_failed("home_launch_version")) return -1;
+    char id[17], text[16];
+    snprintf(id, sizeof(id), "%016llx", (unsigned long long)app);
+    snprintf(text, sizeof(text), "%u\n", version);
+    return home_write_file("launch", id, ".txt", text, strlen(text));
+}
+int home_control_invalidate(uint64_t app) { (void)app; return home_failed("home_control_invalidate") ? -1 : 0; }

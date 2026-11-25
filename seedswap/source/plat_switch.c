@@ -3,6 +3,7 @@
 // framebuffer, double buffered. Files: the SD card and the Seedsow account
 // save through fsp-srv (HEN's FS proxy root, as mxdump/mxwrite use it).
 #include "platform.h"
+#include "vfs_raw.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,10 +20,10 @@ static bool g_save_open, g_acc_ok;
 static char g_err[160];
 static uint64_t g_down, g_held, g_repeat_at;
 
-struct VfsFile { FsFile f; };
+struct PVfsFile { FsFile f; };
 
 static void set_err(const char *what, Result rc) { snprintf(g_err, sizeof(g_err), "%s failed (0x%x)", what, rc); }
-const char *vfs_last_error(void) { return g_err; }
+const char *pvfs_last_error(void) { return g_err; }
 
 bool plat_init(void) {
     if (R_FAILED(framebufferCreate(&g_fb, nwindowGetDefault(), SCREEN_W, SCREEN_H, PIXEL_FORMAT_RGBA_8888, 2)))
@@ -115,7 +116,7 @@ void plat_frame_end(void) { framebufferEnd(&g_fb); }
 // ---- files
 static FsFileSystem *fsys(VfsRoot r) { return r == VFS_SAVE ? (g_save_open ? &g_save : NULL) : &g_sd; }
 
-int vfs_stat(VfsRoot r, const char *path, bool *is_dir, int64_t *size) {
+int pvfs_stat(VfsRoot r, const char *path, bool *is_dir, int64_t *size) {
     FsFileSystem *fs = fsys(r);
     if (!fs) return -1;
     FsDirEntryType type;
@@ -136,7 +137,7 @@ int vfs_stat(VfsRoot r, const char *path, bool *is_dir, int64_t *size) {
     return 0;
 }
 
-int vfs_list(VfsRoot r, const char *dir, VfsEntry **out, int *count) {
+int pvfs_list(VfsRoot r, const char *dir, VfsEntry **out, int *count) {
     *out = NULL;
     *count = 0;
     FsFileSystem *fs = fsys(r);
@@ -164,24 +165,24 @@ int vfs_list(VfsRoot r, const char *dir, VfsEntry **out, int *count) {
     return 0;
 }
 
-int vfs_create(VfsRoot r, const char *path, int64_t size) {
+int pvfs_create(VfsRoot r, const char *path, int64_t size) {
     FsFileSystem *fs = fsys(r);
     Result rc = fs ? fsFsCreateFile(fs, path, size, 0) : MAKERESULT(Module_Libnx, LibnxError_NotInitialized);
     if (R_FAILED(rc)) { set_err("create file", rc); return -1; }
     return 0;
 }
 
-VfsFile *vfs_open(VfsRoot r, const char *path, bool write) {
+PVfsFile *pvfs_open(VfsRoot r, const char *path, bool write) {
     FsFileSystem *fs = fsys(r);
     if (!fs) return NULL;
-    VfsFile *f = calloc(1, sizeof(*f));
+    PVfsFile *f = calloc(1, sizeof(*f));
     if (!f) return NULL;
     Result rc = fsFsOpenFile(fs, path, write ? (FsOpenMode_Read | FsOpenMode_Write | FsOpenMode_Append) : FsOpenMode_Read, &f->f);
     if (R_FAILED(rc)) { set_err("open file", rc); free(f); return NULL; }
     return f;
 }
 
-int vfs_read(VfsFile *f, int64_t off, void *buf, size_t n, size_t *got) {
+int pvfs_read(PVfsFile *f, int64_t off, void *buf, size_t n, size_t *got) {
     u64 g = 0;
     Result rc = fsFileRead(&f->f, off, buf, n, FsReadOption_None, &g);
     if (got) *got = g;
@@ -189,43 +190,43 @@ int vfs_read(VfsFile *f, int64_t off, void *buf, size_t n, size_t *got) {
     return 0;
 }
 
-int vfs_write(VfsFile *f, int64_t off, const void *buf, size_t n) {
+int pvfs_write(PVfsFile *f, int64_t off, const void *buf, size_t n) {
     Result rc = fsFileWrite(&f->f, off, buf, n, FsWriteOption_None);
     if (R_FAILED(rc)) { set_err("write", rc); return -1; }
     return 0;
 }
 
-int vfs_flush(VfsFile *f) { return R_SUCCEEDED(fsFileFlush(&f->f)) ? 0 : -1; }
-int64_t vfs_size(VfsFile *f) { s64 s = -1; fsFileGetSize(&f->f, &s); return s; }
-void vfs_close(VfsFile *f) { if (f) { fsFileClose(&f->f); free(f); } }
+int pvfs_flush(PVfsFile *f) { return R_SUCCEEDED(fsFileFlush(&f->f)) ? 0 : -1; }
+int64_t pvfs_size(PVfsFile *f) { s64 s = -1; fsFileGetSize(&f->f, &s); return s; }
+void pvfs_close(PVfsFile *f) { if (f) { fsFileClose(&f->f); free(f); } }
 
 int vfs_mkdir(VfsRoot r, const char *path) {
     bool dir = false;
-    if (vfs_stat(r, path, &dir, NULL) == 0) return dir ? 0 : -1;
+    if (pvfs_stat(r, path, &dir, NULL) == 0) return dir ? 0 : -1;
     FsFileSystem *fs = fsys(r);
     Result rc = fs ? fsFsCreateDirectory(fs, path) : MAKERESULT(Module_Libnx, LibnxError_NotInitialized);
     if (R_FAILED(rc)) { set_err("create directory", rc); return -1; }
     return 0;
 }
 
-int vfs_delete(VfsRoot r, const char *path) {
+int pvfs_delete(VfsRoot r, const char *path) {
     FsFileSystem *fs = fsys(r);
     Result rc = fs ? fsFsDeleteFile(fs, path) : MAKERESULT(Module_Libnx, LibnxError_NotInitialized);
     if (R_FAILED(rc)) { set_err("delete file", rc); return -1; }
     return 0;
 }
 
-int vfs_rmtree(VfsRoot r, const char *path) {
+int pvfs_rmtree(VfsRoot r, const char *path) {
     FsFileSystem *fs = fsys(r);
     Result rc = fs ? fsFsDeleteDirectoryRecursively(fs, path) : MAKERESULT(Module_Libnx, LibnxError_NotInitialized);
     if (R_FAILED(rc)) { set_err("delete directory", rc); return -1; }
     return 0;
 }
 
-int vfs_rename(VfsRoot r, const char *from, const char *to) {
+int pvfs_rename(VfsRoot r, const char *from, const char *to) {
     FsFileSystem *fs = fsys(r);
     bool dir = false;
-    if (!fs || vfs_stat(r, from, &dir, NULL) != 0) { snprintf(g_err, sizeof(g_err), "rename: %s missing", from); return -1; }
+    if (!fs || pvfs_stat(r, from, &dir, NULL) != 0) { snprintf(g_err, sizeof(g_err), "rename: %s missing", from); return -1; }
     Result rc = dir ? fsFsRenameDirectory(fs, from, to) : fsFsRenameFile(fs, from, to);
     if (R_FAILED(rc)) { set_err("rename", rc); return -1; }
     return 0;
@@ -436,6 +437,16 @@ int save_extend(const Uid *uid, int64_t data, int64_t journal) {
     return 0;
 }
 
+int user_list_all(Uid *out, int max) {
+    if (!g_acc_ok || max <= 0) return -1;
+    AccountUid *au = calloc((size_t)max, sizeof(*au));
+    s32 total = 0;
+    if (!au || R_FAILED(accountListAllUsers(au, max, &total))) { free(au); return -1; }
+    for (s32 i = 0; i < total && i < max; i++) memcpy(out[i].b, &au[i], 16);
+    free(au);
+    return total < max ? total : max;
+}
+
 bool user_name(const Uid *uid, char *out, size_t n) {
     if (!g_acc_ok) return false;
     AccountUid au;
@@ -570,4 +581,161 @@ int plat_read_system_patcher(uint8_t **out, size_t *size, char *err, size_t errn
     *out = buf;
     *size = done;
     return 0;
+}
+
+// ---- HOME installs: ncm on the SD card (storage 5) and ns's application records. ns command IDs on 23.0.1
+// (IApplicationManagerInterface): 16 PushApplicationRecord {u8 event, 7 pad, u64 id} + in-buffer of
+// {NcmContentMetaKey, u8 storage, 7 pad}; 27 DeleteApplicationRecord {u64}; 404 InvalidateApplicationControlCache
+// {u64} (kernel-research/home-entries/re-scratch/out/ns-impl-table.txt). Game Vault pushes the same way.
+static NcmContentStorage g_home_cs;
+static NcmContentMetaDatabase g_home_db;
+static Service g_home_am;
+static bool g_home_open;
+static char g_home_err[160];
+static int home_fail(const char *what, Result rc) {
+    snprintf(g_home_err, sizeof(g_home_err), "%s failed (0x%x)", what, rc);
+    return rc ? (int)rc : -1;
+}
+const char *home_last_error(void) { return g_home_err; }
+
+int home_sd_open(void) {
+    if (g_home_open) return 0;
+    Result rc = ncmInitialize();
+    if (R_FAILED(rc)) return home_fail("ncm", rc);
+    rc = ncmOpenContentStorage(&g_home_cs, NcmStorageId_SdCard);
+    if (R_FAILED(rc)) { ncmExit(); return home_fail("open the SD card's content storage", rc); }
+    rc = ncmOpenContentMetaDatabase(&g_home_db, NcmStorageId_SdCard);
+    if (R_FAILED(rc)) { ncmContentStorageClose(&g_home_cs); ncmExit(); return home_fail("open the SD card's content database", rc); }
+    rc = nsInitialize();
+    if (R_SUCCEEDED(rc)) rc = nsGetApplicationManagerInterface(&g_home_am);
+    if (R_FAILED(rc)) {
+        ncmContentMetaDatabaseClose(&g_home_db); ncmContentStorageClose(&g_home_cs); ncmExit();
+        return home_fail("ns", rc);
+    }
+    g_home_open = true;
+    return 0;
+}
+
+void home_sd_close(void) {
+    if (!g_home_open) return;
+    serviceClose(&g_home_am);
+    nsExit();
+    ncmContentMetaDatabaseClose(&g_home_db);
+    ncmContentStorageClose(&g_home_cs);
+    ncmExit();
+    g_home_open = false;
+}
+
+int home_record_exists(uint64_t app) {
+    if (!g_home_open) { home_fail("content storage not open", 0); return -1; }
+    NsApplicationRecord recs[32];
+    for (s32 offset = 0;;) {
+        s32 got = 0;
+        Result rc = nsListApplicationRecord(recs, 32, offset, &got);
+        if (R_FAILED(rc)) { home_fail("list the installed games", rc); return -1; }
+        for (s32 i = 0; i < got; i++) if (recs[i].application_id == app) return 1;
+        if (got < 32) return 0;
+        offset += got;
+    }
+}
+
+int home_placeholder_create(const uint8_t content[16], uint8_t placeholder_out[16], int64_t size) {
+    NcmPlaceHolderId ph;
+    Result rc = ncmContentStorageGeneratePlaceHolderId(&g_home_cs, &ph);
+    if (R_FAILED(rc)) return home_fail("make a placeholder ID", rc);
+    NcmContentId id;
+    memcpy(&id, content, 16);
+    rc = ncmContentStorageCreatePlaceHolder(&g_home_cs, &id, &ph, size);
+    if (R_FAILED(rc)) return home_fail("create a placeholder", rc);
+    memcpy(placeholder_out, &ph, 16);
+    return 0;
+}
+
+int home_placeholder_write(const uint8_t placeholder[16], int64_t off, const void *buf, size_t n) {
+    NcmPlaceHolderId ph;
+    memcpy(&ph, placeholder, 16);
+    Result rc = ncmContentStorageWritePlaceHolder(&g_home_cs, &ph, (u64)off, buf, n);
+    return R_FAILED(rc) ? home_fail("write to the SD card's content storage", rc) : 0;
+}
+
+int home_placeholder_delete(const uint8_t placeholder[16]) {
+    NcmPlaceHolderId ph;
+    memcpy(&ph, placeholder, 16);
+    Result rc = ncmContentStorageDeletePlaceHolder(&g_home_cs, &ph);
+    return R_FAILED(rc) ? home_fail("delete a placeholder", rc) : 0;
+}
+
+int home_content_register(const uint8_t content[16], const uint8_t placeholder[16]) {
+    NcmContentId id;
+    NcmPlaceHolderId ph;
+    memcpy(&id, content, 16);
+    memcpy(&ph, placeholder, 16);
+    bool has = false;
+    if (R_SUCCEEDED(ncmContentStorageHas(&g_home_cs, &has, &id)) && has) ncmContentStorageDelete(&g_home_cs, &id);
+    Result rc = ncmContentStorageRegister(&g_home_cs, &id, &ph);
+    return R_FAILED(rc) ? home_fail("register the content", rc) : 0;
+}
+
+bool home_content_has(const uint8_t content[16]) {
+    NcmContentId id;
+    memcpy(&id, content, 16);
+    bool has = false;
+    return R_SUCCEEDED(ncmContentStorageHas(&g_home_cs, &has, &id)) && has;
+}
+
+int home_content_delete(const uint8_t content[16]) {
+    if (!home_content_has(content)) return 0;
+    NcmContentId id;
+    memcpy(&id, content, 16);
+    Result rc = ncmContentStorageDelete(&g_home_cs, &id);
+    return R_FAILED(rc) ? home_fail("delete the content", rc) : 0;
+}
+
+int home_meta_set(const uint8_t key[16], const void *meta, size_t n) {
+    NcmContentMetaKey k;
+    memcpy(&k, key, 16);
+    Result rc = ncmContentMetaDatabaseSet(&g_home_db, &k, meta, n);
+    if (R_SUCCEEDED(rc)) rc = ncmContentMetaDatabaseCommit(&g_home_db);
+    return R_FAILED(rc) ? home_fail("write the content list", rc) : 0;
+}
+
+int home_meta_remove(const uint8_t key[16]) {
+    NcmContentMetaKey k;
+    memcpy(&k, key, 16);
+    bool has = false;
+    if (R_FAILED(ncmContentMetaDatabaseHas(&g_home_db, &has, &k)) || !has) return 0;
+    Result rc = ncmContentMetaDatabaseRemove(&g_home_db, &k);
+    if (R_SUCCEEDED(rc)) rc = ncmContentMetaDatabaseCommit(&g_home_db);
+    return R_FAILED(rc) ? home_fail("remove the content list", rc) : 0;
+}
+
+int home_record_push(uint64_t app, const uint8_t (*keys)[16], int n) {
+    if (n <= 0 || n > 16) return home_fail("push the HOME record (bad count)", 0);
+    struct { uint8_t key[16]; uint8_t storage; uint8_t pad[7]; } recs[16];
+    memset(recs, 0, sizeof(recs));
+    for (int i = 0; i < n; i++) { memcpy(recs[i].key, keys[i], 16); recs[i].storage = NcmStorageId_SdCard; }
+    const struct { u8 event; u8 pad[7]; u64 app; } in = {3, {0}, app};
+    Result rc = serviceDispatchIn(&g_home_am, 16, in,
+        .buffer_attrs = {SfBufferAttr_HipcMapAlias | SfBufferAttr_In},
+        .buffers = {{recs, sizeof(recs[0]) * (size_t)n}});
+    return R_FAILED(rc) ? home_fail("push the HOME record", rc) : 0;
+}
+
+int home_record_delete(uint64_t app) {
+    Result rc = serviceDispatchIn(&g_home_am, 27, app);
+    return R_FAILED(rc) ? home_fail("delete the HOME record", rc) : 0;
+}
+
+int home_launch_version(uint64_t app, uint32_t version) {
+    Result rc = avmInitialize();
+    if (R_SUCCEEDED(rc)) {
+        rc = avmPushLaunchVersion(app, version);
+        avmExit();
+    }
+    return R_FAILED(rc) ? home_fail("set the launch version", rc) : 0;
+}
+
+int home_control_invalidate(uint64_t app) {
+    Result rc = serviceDispatchIn(&g_home_am, 404, app);
+    return R_FAILED(rc) ? home_fail("clear the cached name and icon", rc) : 0;
 }
