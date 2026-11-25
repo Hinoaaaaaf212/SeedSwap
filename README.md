@@ -3,7 +3,7 @@
 Play your Switch 1 games on a Switch 2. SeedSwap runs them in place of Seedsow Lullaby or another
 Switch 1 game you have installed.
 
-Needs firmware 23.0.1 and kaiHEN 20261123 (20261117.1 also works).
+Needs firmware 23.0.1 and kaiHEN.
 
 > [!WARNING]
 > **SeedSwap can brick your console.** It's rare, but it can happen. SeedSwap runs on the same base
@@ -63,7 +63,7 @@ launcher, seedsow-semi-untethered, and kurumuz's RO helper. It checks every file
 | Path | What |
 |---|---|
 | `seedswap/` | SeedSwap's source |
-| `save/` | our files for the Seedsow save (the A/B launcher entries, the loader start, and the kaiHEN stage, which takes kaiHEN 20261123's SD layout from seedsow-semi-untethered d2e6fac) |
+| `save/` | our files for the Seedsow save (the A/B launcher entries and the loader start) |
 | `sd/` | our SD card files (the loader stage and the install image) |
 | `loader/` | our changes to ns2jb-modloader, and the image tools |
 | `build.py` | makes the save and SD files |

@@ -9,10 +9,7 @@ About half an hour the first time.
 
 ## You need
 
-- A Switch 2 on **firmware 23.0.1**, with **[kaiHEN](https://github.com/ouncebrew/kaihen) 20261123**
-  on the SD card (20261117.1 also works). Copy **all** of kaiHEN's zip to the root of the SD card,
-  not only its `sdcard/` folder: Seedsow needs `bootstrap.bin` and `ro/` too. The first run moves
-  the files to `kaihen/bin`.
+- A Switch 2 on **firmware 23.0.1**, with **[kaiHEN](https://github.com/ouncebrew/kaihen)** set up.
 - **Seedsow Lullaby** installed: the full game or the demo.
 - **A spare user** for the exploit save (System Settings → Users → Add User). Don't play on it.
 - A PC: Windows for `build.exe`, or any PC with Python 3.8 or newer.
@@ -120,8 +117,6 @@ Each game keeps its own save.
 
 - **New SeedSwap:** copy the new `seedswap.nro` to `SD:/switch/seedswap.nro`.
 - **New SD files or save:** do step 1 again with the new release, then repeat steps 2 and 3.
-- **New kaiHEN:** copy all of its zip to the root of the SD card. The next run of A moves it into
-  place, if this save supports that kaiHEN.
 
 Don't install system updates: kaiHEN needs firmware 23.0.1.
 
@@ -142,7 +137,6 @@ Don't install system updates: kaiHEN needs firmware 23.0.1.
 | ns2-savekit says the save doesn't exist (`0x7d402`) | Start Seedsow once on that user, close it, and try again. |
 | No launcher menu | Start Seedsow on the spare user. |
 | "not the expected Seedsow build" | Your Seedsow version isn't supported. Nothing was changed. |
-| "kaiHEN build this save doesn't support" or "required SD files missing" | Copy all of the kaiHEN 20261123 zip (`bootstrap.bin`, `ro` and `sdcard`) to the root of the SD card, and run A again. |
 | A says to power off | Hold POWER for 12 seconds → Power off. Turn it on and try again. |
 | A game finds no save | Start the host on the user who plays. Just picked that user? Restart and run A first. |
 | "The loader is set up for a different user" | Restart and run A. Still there? Saves → Y. |

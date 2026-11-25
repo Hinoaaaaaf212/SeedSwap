@@ -21,170 +21,14 @@ M.RO_TITLE_NUM  = 0x0400000000000037 -- Note: bit 58 is 0x0400000000000000; use 
 M.RO_TITLE_STR  = str_char(0x37, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04)
 M.HEN_TITLE_STR = str_char(0x3a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04)
 
--- [safe] kaiHEN releases this save runs, newest first. bootstrap.bin, ro, hen and game must all
--- come from one of them; anything else is refused before it can become the RO donor / bootstrap.
--- 20261123: layout and file sizes as in rushinz/seedsow-semi-untethered d2e6fac.
-M.SD_RELEASES = {
-    {name = "20261123",   bootstrap = 27948, ro = 29198, hen = 78763, game = 71761},
-    {name = "20261117.1", bootstrap = 27948, ro = 23854, hen = 78765, game = 63424},
-}
-M.SD_REQUIRED = {"bootstrap", "ro", "hen", "game"}
-M.SD_ORDER = {"bootstrap", "ro", "hen", "game", "hbmenu", "programs", "lib"}
-
 M.SD_MANIFEST = {
     bootstrap = {path = "/kaihen/bin/bootstrap.bin", size = 27948, optional = false},
-    ro        = {path = "/kaihen/bin/ro/main",       size = 29198, optional = false},
-    hen       = {path = "/kaihen/bin/hen/main",      size = 78763, optional = false},
-    game      = {path = "/kaihen/bin/game/main",     size = 71761, optional = false},
-    hbmenu    = {path = "/hbmenu.nro",               size = 11852414, optional = true},
-    programs  = {path = "/switch/ounceshell.nro",    size = 22352203, optional = true},
-    lib       = {path = "/kaihen/lib/libounce.so.1", size = 2351104, optional = true},
+    ro        = {path = "/kaihen/bin/ro/main",       size = 23854, optional = false},
+    hen       = {path = "/kaihen/bin/hen/main",      size = 78765, optional = false},
+    game      = {path = "/kaihen/bin/game/main",     size = 63424, optional = false},
+    hbmenu    = {path = "/hbmenu.nro",               size = 11790974, optional = true},
+    programs  = {path = "/switch/ounceshell/ounceshell.nro", size = 22294859, optional = true},
 }
-
--- Where each part is in an unpacked kaiHEN zip: 20261123 first (its sdcard/ mirrors the card),
--- then the older zips (hen/, game/, programs/ at the top). dir = the part is the folder of its
--- SD_MANIFEST file.
-M.SD_SOURCES = {
-    bootstrap = {dir = false, "bootstrap.bin"},
-    ro        = {dir = true,  "ro"},
-    hen       = {dir = true,  "sdcard/kaihen/bin/hen", "hen"},
-    game      = {dir = true,  "sdcard/kaihen/bin/game", "game"},
-    hbmenu    = {dir = false, "sdcard/hbmenu.nro", "hbmenu.nro"},
-    programs  = {dir = false, "sdcard/switch/ounceshell.nro", "programs/ounceshell.nro"},
-    lib       = {dir = true,  "sdcard/kaihen/lib"},
-}
-
-function M.sd_release(sizes)
-    for i, r in ipairs(M.SD_RELEASES) do
-        if sizes.bootstrap == r.bootstrap and sizes.ro == r.ro and sizes.hen == r.hen and sizes.game == r.game then
-            return r, i
-        end
-    end
-    return nil, nil
-end
-
--- Checks kaiHEN's files on the SD card. When an unpacked kaiHEN zip of a release above is on the
--- card (a kaihen* folder, /kaihen, /kaihen/bin or the root) and is newer than what /kaihen/bin
--- holds, or /kaihen/bin holds no release above, its files are moved into place first (as
--- d2e6fac does, but only from a complete known release, so a stale old zip never replaces a
--- working install). e = {fs, rt, P, slots, sdh, log}. Returns the release in place; errors if none.
-function M.verify_sd(e)
-    local fs, rt, sdh, log = e.fs, e.rt, e.sdh, e.log
-    local function exists(p)
-        local r = fs.ipc_get_entry_type(sdh, p, 0x301)
-        return r.transport == 0 and r.result == 0, r.type
-    end
-    local function size_of(p)
-        local fh = fs.ipc_open_file(sdh, p, 1, 0x301)
-        if not fh or fh == 0 then return nil end
-        local sz = fs.ipc_file_get_size(fh)
-        rt.close_handle(fh)
-        return sz
-    end
-    local function dir_of(p) return p:match("^(.*)/[^/]+$") end
-    local function base_of(p) return p:match("([^/]+)$") end
-    local function where(c) return c == "" and "the SD card's root" or c end
-    local function installed()
-        local s = {}
-        for _, n in ipairs(M.SD_REQUIRED) do s[n] = size_of(M.SD_MANIFEST[n].path) end
-        return s
-    end
-    -- part n in candidate c: the path to move and the file whose size counts, or nil
-    local function source(c, n)
-        local src = M.SD_SOURCES[n]
-        for _, rel in ipairs(src) do
-            local p = c .. "/" .. rel
-            local ok, t = exists(p)
-            if ok and (t == 0) == src.dir then
-                if src.dir then return p, p .. "/" .. base_of(M.SD_MANIFEST[n].path) end
-                return p, p
-            end
-        end
-        return nil, nil
-    end
-
-    local have = installed()
-    local _, have_i = M.sd_release(have)
-    local cands = {""}
-    local list = fs.ipc_list_directory(sdh, "/", 3)
-    for _, ent in ipairs(list.entries or {}) do
-        local low = ent.name:lower()
-        if ent.type == 0 and low:sub(1, 6) == "kaihen" and low ~= "kaihen" then
-            cands[#cands + 1] = "/" .. ent.name
-        end
-    end
-    cands[#cands + 1] = "/kaihen"
-    cands[#cands + 1] = "/kaihen/bin"
-    local best, best_i, best_c
-    for _, c in ipairs(cands) do
-        if exists(c .. "/bootstrap.bin") then
-            local s = {}
-            for _, n in ipairs(M.SD_REQUIRED) do
-                local _, f = source(c, n)
-                s[n] = (f and size_of(f)) or have[n]
-            end
-            local r, i = M.sd_release(s)
-            if r and (not best_i or i < best_i) then
-                best, best_i, best_c = r, i, c
-            elseif not r and c ~= "/kaihen/bin" then
-                log("not using the kaiHEN files in " .. where(c) .. ": not a release this save supports")
-            end
-        end
-    end
-
-    if best and (not have_i or best_i < have_i) then
-        log(str_format("moving kaiHEN %s from %s into /kaihen/bin", best.name, where(best_c)))
-        fs.ipc_create_directory(sdh, "/kaihen")
-        fs.ipc_create_directory(sdh, "/kaihen/bin")
-        fs.ipc_create_directory(sdh, "/switch")
-        for _, n in ipairs(M.SD_ORDER) do
-            local from = source(best_c, n)
-            local dst = M.SD_MANIFEST[n].path
-            if from and M.SD_SOURCES[n].dir then
-                local dd = dir_of(dst)
-                if from ~= dd and from:sub(1, #dd + 1) ~= dd .. "/" and dd:sub(1, #from + 1) ~= from .. "/" then
-                    fs.ipc_delete_directory_recursively(sdh, dd)
-                    rt.wr_str(e.slots.path, from)
-                    rt.wr_str(e.slots.info, dd)
-                    fs.send_packet(sdh, e.P.packet(6, "", {
-                        x = {{addr = e.slots.path, size = 0x301, index = 0},
-                             {addr = e.slots.info, size = 0x301, index = 1}}
-                    }), e.slots.pkt)
-                end
-            elseif from and from ~= dst then
-                fs.ipc_delete_file(sdh, dst)
-                fs.ipc_rename_file(sdh, from, dst, 0x301, 0x301)
-            end
-        end
-        fs.ipc_commit(sdh)
-    end
-
-    local newest = M.SD_RELEASES[1]
-    local missing = {}
-    for _, n in ipairs(M.SD_REQUIRED) do
-        if not exists(M.SD_MANIFEST[n].path) then missing[#missing + 1] = M.SD_MANIFEST[n].path end
-    end
-    if #missing > 0 then
-        error("KH: required SD files missing: " .. tbl_concat(missing, ", ") .. ". Copy all of the kaiHEN "
-            .. newest.name .. " zip (bootstrap.bin, ro and sdcard) to the SD card's root and try again")
-    end
-    local now = installed()
-    local r = M.sd_release(now)
-    if not r then
-        local bad = {}
-        for _, n in ipairs(M.SD_REQUIRED) do
-            if now[n] ~= newest[n] then
-                bad[#bad + 1] = str_format("%s is %s bytes, not %d", M.SD_MANIFEST[n].path, tostring(now[n]), newest[n])
-            end
-        end
-        error("KH: the kaiHEN files on the SD card are from a kaiHEN build this save doesn't support ("
-            .. tbl_concat(bad, "; ") .. "). Copy all of the kaiHEN " .. newest.name
-            .. " zip (bootstrap.bin, ro and sdcard) to the SD card's root and try again."
-            .. " Stopped before the RO swap")
-    end
-    log("SD files: kaiHEN " .. r.name .. " (sizes checked)")
-    return r
-end
 
 
 
@@ -423,7 +267,97 @@ function M.run_kaihen(rt, fs, log_fn)
         local sdh = open_sd_card()
         local skip_probe = fs.ipc_get_entry_type(sdh, "/kaihen/civswitchfs-skipcheck", 0x301)
         ctx.sdSkipCheck = (skip_probe.transport == 0 and skip_probe.result == 0)
-        ctx.sdRelease = M.verify_sd({fs = fs, rt = rt, P = P, slots = slots, sdh = sdh, log = kh_log})
+
+        local function find_missing()
+            local miss = {}
+            for name, item in pairs(M.SD_MANIFEST) do
+                local e = fs.ipc_get_entry_type(sdh, item.path, 0x301)
+                if e.transport ~= 0 or e.result ~= 0 then
+                    miss[#miss + 1] = name
+                end
+            end
+            return miss
+        end
+
+        local missing = find_missing()
+        if #missing > 0 then
+            local rel_sources = {
+                bootstrap = {src = "bootstrap.bin", dir = false},
+                ro        = {src = "ro",            dir = true},
+                hen       = {src = "hen",           dir = true},
+                game      = {src = "game",          dir = true},
+                hbmenu    = {src = "hbmenu.nro",    dir = false},
+                programs  = {src = "programs/ounceshell.nro", dir = false},
+            }
+            local cand_roots = {"", "/kaihen"}
+            local root_list = fs.ipc_list_directory(sdh, "/", 3)
+            for _, entry in ipairs(root_list.entries or {}) do
+                if entry.type == 0 and entry.name:lower():sub(1, 6) == "kaihen" and entry.name:lower() ~= "kaihen" then
+                    cand_roots[#cand_roots + 1] = "/" .. entry.name
+                end
+            end
+            for _, cand_root in ipairs(cand_roots) do
+                local bp = fs.ipc_get_entry_type(sdh, cand_root .. "/bootstrap.bin", 0x301)
+                if bp.transport == 0 and bp.result == 0 then
+                    fs.ipc_create_directory(sdh, "/kaihen")
+                    fs.ipc_create_directory(sdh, "/kaihen/bin")
+                    fs.ipc_create_directory(sdh, "/switch")
+                    fs.ipc_create_directory(sdh, "/switch/ounceshell")
+                    for _, mname in ipairs(missing) do
+                        local rs = rel_sources[mname]
+                        local dst = M.SD_MANIFEST[mname].path
+                        if rs and dst then
+                            local from_p = cand_root .. "/" .. rs.src
+                            local sp = fs.ipc_get_entry_type(sdh, from_p, 0x301)
+                            if sp.transport == 0 and sp.result == 0 then
+                                if rs.dir then
+                                    local dst_dir = dst:match("^(.*)/[^/]+$")
+                                    rt.wr_str(slots.path, from_p)
+                                    rt.wr_str(slots.info, dst_dir)
+                                    local r_pkt = P.packet(6, "", {
+                                        x = {{addr = slots.path, size = 0x301, index = 0},
+                                             {addr = slots.info, size = 0x301, index = 1}}
+                                    })
+                                    fs.send_packet(sdh, r_pkt, slots.pkt)
+                                elseif from_p ~= dst then
+                                    fs.ipc_rename_file(sdh, from_p, dst, 0x301, 0x301)
+                                end
+                            end
+                        end
+                    end
+                    fs.ipc_commit(sdh)
+                    break
+                end
+            end
+            missing = find_missing()
+        end
+
+        local req_missing = {}
+        for _, mname in ipairs(missing) do
+            if not M.SD_MANIFEST[mname].optional then
+                req_missing[#req_missing + 1] = M.SD_MANIFEST[mname].path
+            end
+        end
+        if #req_missing > 0 then
+            error("KH: required SD files missing: " .. tbl_concat(req_missing, ", "))
+        end
+        -- [safe] The required kaiHEN files are pinned to one release; their sizes are
+        -- fixed in SD_MANIFEST. Refuse a truncated or wrong-version file before it can
+        -- become the RO donor / bootstrap, which would otherwise be swapped into FS.
+        for _, mname in ipairs({"bootstrap", "ro", "hen", "game"}) do
+            local item = M.SD_MANIFEST[mname]
+            local fh = fs.ipc_open_file(sdh, item.path, 1, 0x301)
+            if fh == 0 then
+                error("KH: cannot open " .. item.path .. " to check its size")
+            end
+            local sz = fs.ipc_file_get_size(fh)
+            rt.close_handle(fh)
+            if sz ~= item.size then
+                error("KH: " .. item.path .. " size " .. tostring(sz) .. " != expected "
+                    .. item.size .. " (wrong kaiHEN build on SD); aborting before the RO swap")
+            end
+        end
+        kh_log("SD manifest verified (sizes checked)")
     end
 
 

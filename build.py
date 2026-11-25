@@ -16,8 +16,7 @@ Downloads the parts this repository doesn't include, at fixed commits, and check
   alula/switch-artemis-launcher ae02495 (GitHub)     the launcher save: core.lua, http.lua,
                                                      inject.lua, inject.iet, proggy.ttf, *.dat
   rushinz/seedsow-semi-untethered 6201c35 (GitLab)   the exploit chain modules, in the form its
-                                                     uploader puts them in the save; s2_kaihen.lua
-                                                     from d2e6fac (kaiHEN 20261123)
+                                                     uploader puts them in the save
   kurumuz/ns2jb 81d5bb1 (GitLab)                     the RO helper the loader stage starts first
 Writes:
   <out>/save/                       the Seedsow save, every file flat (for ns2-savekit)
@@ -42,11 +41,6 @@ ALULA = ("https://raw.githubusercontent.com/alula/switch-artemis-launcher/"
          "ae0249547c1e05df46a63a5c05818914b3ae0706/")
 SEMI = ("https://gitlab.com/rushinz/seedsow-semi-untethered/-/raw/"
         "6201c358201fb43e504dd7bbcb8191706b820f27/")
-# s2_kaihen.lua: kaiHEN 20261123's SD layout. The other modules stay at 6201c35 (d2e6fac's scan and
-# wave stop the run on shape < 10; B has them as n_ files, with retries).
-SEMI_NEW = ("https://gitlab.com/rushinz/seedsow-semi-untethered/-/raw/"
-            "d2e6fac5e19607f58557c22d2a195c6e0ed4b41c/")
-SEMI_FROM_NEW = {"s2_kaihen.lua"}
 NS2JB = "https://gitlab.com/kurumuz/ns2jb/-/raw/81d5bb114c856109dadaf1077d927a9f297fe58d/"
 
 # save name -> (source path, sha256 of the file as it goes into the save)
@@ -70,7 +64,7 @@ SEMI_FILES = {
     "s2_scan.lua": "29188451c2bad547fa55551e02884b245489ec21bfb14f1812011395c520c903",
     "s2_promote.lua": "cfa0e23879f7aa24217c6f8b50503216168e337e50a69d719257aec4fef54a81",
     "s2_kh_ro.lua": "cba5d9c638461153f708ecb9e3e60ca7b4ba60589cece101d0923e44b0126827",
-    "s2_kaihen.lua": "ab2690125380a6de4eb136f0c8bc4864223618be1072690b93b9c4f32de7a524",
+    "s2_kaihen.lua": "ec46b1efcac639b5a9fd2dcf926ad9c2629cdf95d29ce35f5cfd50538cf1e88e",
     "s2_main.lua": "0ae5ab77bfa18c21e3ff9bb52845d3830135c258065b58fc6b688b9f29016d1e",
     "exploita2.lua": "f1c5ef76feae14a6257319144977a658768806fb11fd80893c89b8f34c6c18f7",
     "inject2.lua": "253b498ddecb2d4dd1e6b8a89c144c49ee87965e3450f4aa9d7e4ce6afed4ca9",
@@ -169,8 +163,7 @@ def main(argv=None) -> int:
         save[name] = checked(name, fetch(ALULA + path, a.cache), want, "alula/switch-artemis-launcher")
     semi = {}
     for name, want in SEMI_FILES.items():
-        base = SEMI_NEW if name in SEMI_FROM_NEW else SEMI
-        semi[name] = checked(name, wire(fetch(base + "lua/" + name, a.cache), name), want,
+        semi[name] = checked(name, wire(fetch(SEMI + "lua/" + name, a.cache), name), want,
                              "rushinz/seedsow-semi-untethered")
     save.update(semi)
     save.update({n: semi[src] for n, src in SEMI_COPIES.items()})
