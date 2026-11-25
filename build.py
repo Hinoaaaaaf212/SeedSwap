@@ -85,6 +85,15 @@ ZIP_NAME = "seedsow-seedswap-save.zip"
 ZIP_TIME = (2026, 11, 24, 0, 0, 0)
 
 
+def nro_version(data: bytes):
+    """The NRO's own version ("0.14.2", from its NACP), or None."""
+    size = int.from_bytes(data[0x18:0x1c], "little")
+    if data[size:size + 4] != b"ASET":
+        return None
+    nacp = size + int.from_bytes(data[size + 0x18:size + 0x20], "little")
+    return data[nacp + 0x3060:nacp + 0x3070].split(b"\0", 1)[0].decode("ascii", "replace") or None
+
+
 def sha(b: bytes) -> str:
     return hashlib.sha256(b).hexdigest()
 
@@ -187,6 +196,11 @@ def main(argv=None) -> int:
           for p in sorted((HERE / "sd").rglob("*")) if p.is_file()}
     sd[rel] = helper
     sd["switch/seedswap.nro"] = nro
+
+    shown = re.search(rb'print\(" SeedSwap ([0-9][0-9.]*)"\)', save["inject2.lua"])
+    if not shown or shown.group(1).decode() != nro_version(nro):
+        raise SystemExit("save/inject2.lua shows SeedSwap %s, but seedswap.nro is %s: change the version line in "
+                         "save/inject2.lua" % (shown.group(1).decode() if shown else "no version", nro_version(nro)))
 
     want = {}
     for line in (HERE / "SHA256SUMS.txt").read_text().splitlines():
