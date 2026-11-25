@@ -16,9 +16,9 @@ Nothing is written to a save, and nothing stays in memory after a restart.
   [its zip](https://gitlab.com/kurumuz/ns2jb/-/archive/ae33da13542c616874ec23c56b7b6a660745c5e3/ns2jb-ae33da13542c616874ec23c56b7b6a660745c5e3.zip),
   unzip it and rename the folder you get to `ns2jb`. If you have ns2jb from git:
   `git -C ns2jb fetch` and then `git -C ns2jb checkout ae33da1`.
-- kaiHEN 20261123: download
-  [kaiHEN-20261123.zip](https://github.com/ouncebrew/kaihen/releases/download/20261123/kaiHEN-20261123.zip)
-  and unzip it into a folder named `kaiHEN-20261123`.
+- kaiHEN 20261117.1: download
+  [kaiHEN-20261117.1.zip](https://github.com/ouncebrew/kaihen/releases/download/20261117.1/kaiHEN-20261117.1.zip)
+  and unzip it into a folder named `kaiHEN-20261117.1`.
 - SeedSwap's files: the release folder this one is in, or a copy of the repository after
   `build.py` (its `out` folder is found by itself).
 
@@ -27,7 +27,7 @@ Nothing is written to a save, and nothing stays in memory after a restart.
 1. On the spare user, open SmileBASIC 4 and enter Direct mode.
 2. On the computer:
 
-       node seedswap-boot.cjs --ns2jb ~/ns2jb --kaihen ~/kaiHEN-20261123
+       node seedswap-boot.cjs --ns2jb ~/ns2jb --kaihen ~/kaiHEN-20261117.1
 
    Use your own folders. If the computer has more than one network address, add the one the
    console can reach at the end.

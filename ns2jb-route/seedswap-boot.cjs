@@ -20,7 +20,7 @@ const {spawn} = require('node:child_process');
 const USAGE = `Usage: node seedswap-boot.cjs --ns2jb NS2JB_FOLDER --kaihen KAIHEN_FOLDER [--seedswap SEEDSWAP_FOLDER] [COMPUTER_IP]
 
   --ns2jb      the ns2jb folder (kurumuz/ns2jb at commit ae33da1)
-  --kaihen     the unpacked kaiHEN zip (bootstrap.bin, ro, sdcard)
+  --kaihen     the unpacked kaiHEN zip (bootstrap.bin, ro, ...)
   --seedswap   the SeedSwap release folder (its sd folder is copied to the card when missing);
                default: the folder above this tool's (or its out folder, after build.py)
   COMPUTER_IP  the computer's address on the console's network (ns2jb asks when it isn't given)

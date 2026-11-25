@@ -62,6 +62,8 @@ function checkNs2jb(ns2jb) {
 }
 
 // kaiHEN releases this tool knows (sizes as in the Seedsow save's b_s2_kaihen.lua), newest first.
+// DOWNLOAD is the one to point people to: the newest kaiHEN release still published (20261123 was taken down).
+const DOWNLOAD = '20261117.1';
 const RELEASES = [
   {name: '20261123', bootstrap: 27948, ro: 29198, hen: 78763, game: 71761},
   {name: '20261117.1', bootstrap: 27948, ro: 23854, hen: 78765, game: 63424},
@@ -106,7 +108,7 @@ function readRelease(ship) {
   const sizes = {bootstrap: size('bootstrap.bin'), ro: size('ro/main'), hen: of('/kaihen/bin/hen/main'), game: of('/kaihen/bin/game/main')};
   const release = RELEASES.find(r => ['bootstrap', 'ro', 'hen', 'game'].every(k => r[k] === sizes[k]));
   check(release, `This kaiHEN build isn't one SeedSwap knows (bootstrap.bin ${sizes.bootstrap} B, ro/main ${sizes.ro} B). ` +
-    `Use kaiHEN ${RELEASES[0].name} (https://github.com/ouncebrew/kaihen/releases/download/${RELEASES[0].name}/kaiHEN-${RELEASES[0].name}.zip), ` +
+    `Use kaiHEN ${DOWNLOAD} (https://github.com/ouncebrew/kaihen/releases/download/${DOWNLOAD}/kaiHEN-${DOWNLOAD}.zip), ` +
     `or a SeedSwap release made for your kaiHEN.`);
   return {release, files, bootstrap: path.join(ship, 'bootstrap.bin'), ro: path.join(ship, 'ro/main')};
 }
