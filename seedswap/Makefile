@@ -6,7 +6,7 @@ $(error "Please set DEVKITPRO in your environment")
 endif
 
 TARGET := seedswap
-VERSION := 0.14.0
+VERSION := 0.14.2
 BUILD := build
 PREFIX := $(DEVKITPRO)/devkitA64/bin/aarch64-none-elf-
 include $(DEVKITPRO)/libounce/switch2_cpu.mk
