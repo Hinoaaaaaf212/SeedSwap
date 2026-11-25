@@ -121,9 +121,14 @@ static void load_loader_state(Library *L) {
     L->loader = LOADER_OFF;
     L->loader_guard = false;
     L->loader_guard_user[0] = L->loader_report[0] = 0;
+    L->boot_log = 0;
     char *log = read_text(VFS_SD, "/kaihen/seedsow_run.log", 4 * 1024 * 1024);
     if (!log) return;
     const char *end = log + strlen(log);
+    // each run starts with a line beginning "=== " (the launcher's "=== Seedsow Semi-Untethered ...");
+    // SeedSwap's PC command (ns2jb route) writes "=== SeedSwap PC boot ..."
+    for (const char *line = log; line && *line; line = strchr(line, '\n'), line = line ? line + 1 : NULL)
+        if (!strncmp(line, "=== ", 4)) L->boot_log = strncmp(line, "=== SeedSwap PC boot", 20) ? 1 : 2;
     const char *m3 = rfind(log, end, "milestone 3: modloader resident");
     const char *start = m3 ? rfind(log, m3, "ML: image ") : NULL;
     const char *rep = m3 ? strstr(m3, "loader report: ") : NULL;
@@ -202,6 +207,11 @@ static bool write_state(const Library *L) {
     return write_text(VFS_SD, SS_ROOT "/state.ini", st);
 }
 
+const char *lib_boot_step(const Library *L, bool capital) {
+    if (L->boot_pc) return capital ? "Run seedswap-boot on the computer" : "run seedswap-boot on the computer";
+    return capital ? "Run the launcher (A)" : "run the launcher (A)";
+}
+
 const Host *lib_host(const Library *L) { return &L->hs.list[L->host]; }
 
 const Host *lib_game_host(const Library *L, const Game *g) {
@@ -236,6 +246,8 @@ void lib_load(Library *L) {
     save_set_title(L->hs.list[L->host].id);
     // the play user: config.ini, else the loader guard's user; never the user SeedSwap runs on
     users_load(L);
+    L->boot_pc = L->boot_log ? L->boot_log == 2 : users_ns2jb_route();
+    hosts_boot_step(lib_boot_step(L, false));
 
     // games parked or described under /seedswap/games/<id>/
     VfsEntry *e;
@@ -512,10 +524,15 @@ static const char *switch_blocker(const Library *L, int idx, bool moving) {
         return why;
     }
     if (L->journal_pending) return "The last switch didn't finish. Check the Log tab first.";
-    if (L->loader == LOADER_FIXED) return "Reboot and run the launcher (A) first.";
+    if (L->loader == LOADER_FIXED) {
+        snprintf(why, sizeof(why), "Restart and %s first.", lib_boot_step(L, false));
+        return why;
+    }
     if (L->loader == LOADER_OFF && !L->live_sizes) return "This loader can't switch games. Install the newer loader.";
-    if (L->loader == LOADER_LIVE && L->loader_titles[0] && !title_in(L->loader_titles, H->hex))
-        return "Restart and run the launcher (A) first.";
+    if (L->loader == LOADER_LIVE && L->loader_titles[0] && !title_in(L->loader_titles, H->hex)) {
+        snprintf(why, sizeof(why), "Restart and %s first.", lib_boot_step(L, false));
+        return why;
+    }
     const char *gprog = L->loader == LOADER_LIVE ? L->loader_guard_program : L->image_guard_program;
     if (!g->builtin && gprog[0] && strcmp(gprog, "ffffffffffffffff") && strcmp(gprog, H->hex)) {
         snprintf(why, sizeof(why), "The loader's save guard doesn't cover %s. Install the image with host slots.", H->name);
@@ -531,7 +548,7 @@ static const char *switch_blocker(const Library *L, int idx, bool moving) {
     if (guard[0] && strcmp(guard, L->play_user_hex)) {
         if (!users_guard_follows())
             return "The loader is set up for a different user than the play user. Pick that user in Saves (Y).";
-        snprintf(why, sizeof(why), "Restart and run the launcher (A) so the loader is set up for %s.", L->play_user_name);
+        snprintf(why, sizeof(why), "Restart and %s so the loader is set up for %s.", lib_boot_step(L, false), L->play_user_name);
         return why;
     }
     if (lib_active(L) >= 0 && L->games[lib_active(L)].unknown)
@@ -545,7 +562,7 @@ static const char *switch_blocker(const Library *L, int idx, bool moving) {
     }
     if (!g->builtin && !H->npdm) {
         snprintf(why, sizeof(why), "Start %s once from the HOME menu, then open SeedSwap again. If it still says this, "
-                 "restart and run the launcher (A) first.", H->name);
+                 "restart and %s first.", H->name, lib_boot_step(L, false));
         return why;
     }
     return NULL;
@@ -563,8 +580,10 @@ const char *lib_move_blocker(const Library *L, int idx) {
     if (g->builtin || g->unknown || g->host < 0 || g->host == L->host || g->host >= L->hs.count)
         return "This game can't be moved.";
     const Host *from = &L->hs.list[g->host];
-    if (L->loader == LOADER_LIVE && L->loader_titles[0] && !title_in(L->loader_titles, from->hex))
-        return "Restart and run the launcher (A) first.";
+    if (L->loader == LOADER_LIVE && L->loader_titles[0] && !title_in(L->loader_titles, from->hex)) {
+        snprintf(why, sizeof(why), "Restart and %s first.", lib_boot_step(L, false));
+        return why;
+    }
     if (!from->user_save) {
         snprintf(why, sizeof(why), "The play user has no %s save, so its save can't be taken out.", from->name);
         return why;

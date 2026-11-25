@@ -3,9 +3,10 @@
 // in and out of. Chosen on the console (Saves tab, Y) and kept in SD:/seedswap/config.ini as
 // play_user=<uid>; without that line the loader's save-guard user is taken, as the loader lets only that
 // user open Seedsow's save anyway. Users that can never be the play user, and whose saves are never opened:
-//  * config.ini exploit_user=<uid>[,<uid>], the users whose Seedsow save has the exploit; while it names
-//    none, SeedSwap looks for the kaiHEN chain's files in each user's Seedsow save (read-only) and
-//    writes the users that have them there;
+//  * config.ini exploit_user=<uid>[,<uid>], the users whose save has the exploit; while it names none,
+//    SeedSwap looks for the kaiHEN chain's files in each user's Seedsow save (read-only), and every run
+//    for ns2jb's bootstrap in each user's SmileBASIC 4 save (the PC route: hosting swaps saves into a
+//    host's slot on the play user, which would replace the bootstrap), and adds the users found there;
 //  * the loader's own protected users (PROTECTED_USERS in SD:/kaihen/s2_ml.lua);
 //  * users kept out by hand (Y in the list; config.ini protected_users=<uid>,<uid>);
 //  * with the loader's save guard on, every user but the guard's, unless the guard follows the play user:
@@ -39,6 +40,11 @@ void users_load(Library *L);
 bool users_protected(const Uid *u);
 // Nothing tells SeedSwap which user has the exploit save (no exploit_user, no loader list, no guard).
 bool users_exploit_unknown(void);
+// Every exploit user found is ns2jb's (SmileBASIC 4 bootstrap), none Seedsow's: the loader comes from
+// SeedSwap's PC command, not the launcher.
+bool users_ns2jb_route(void);
+// A file from a SmileBASIC 4 save is ns2jb's bootstrap (a platform.h SaveFileCheck).
+bool users_is_ns2jb_bootstrap(const char *path, const uint8_t *data, size_t n, void *ctx);
 // Choosing a play user moves the install image's save guard to it (see above).
 bool users_guard_follows(void);
 // The guard follows and the install image's guard is not on this user (choosing it changes the image).

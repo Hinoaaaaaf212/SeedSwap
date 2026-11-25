@@ -66,6 +66,10 @@ typedef struct {
     LoaderState loader;     // what is in memory now
     bool loader_guard;      // the running loader has the save guard
     char loader_guard_user[33], loader_report[96];
+    // How the loader gets set up each boot: the Seedsow launcher's A run, or SeedSwap's PC command
+    // with ns2jb (seedswap-boot). From seedsow_run.log's last run, else from which exploit save exists.
+    int boot_log;           // seedsow_run.log's last run: 0 none, 1 the launcher, 2 the PC command
+    bool boot_pc;
     bool journal_pending;
     int64_t sd_free;
     Uid play_user;          // valid when play_user_set (users.h)
@@ -92,6 +96,9 @@ int64_t version_code_from_text(const char *text);
 VersionRelation lib_version_relation(const Game *g, int64_t candidate);
 
 void lib_load(Library *L);
+// The step that sets up the loader after a restart, for messages: "run the launcher (A)" or
+// "run seedswap-boot on the computer" (capital: starting a sentence).
+const char *lib_boot_step(const Library *L, bool capital);
 // The host shown and its name.
 const Host *lib_host(const Library *L);
 // Shows another host (kept in state.ini) and loads the library again.

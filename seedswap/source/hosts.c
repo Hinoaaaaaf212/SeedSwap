@@ -185,6 +185,7 @@ int hosts_find(const HostSet *s, uint64_t id) {
 }
 
 static bool seedsow_npdm(uint8_t **out, size_t *n);
+static const char *g_boot_step = "run the launcher (A)";
 
 static void host_name(Host *h, AppEntry *apps, int *napps) {
     char p[96];
@@ -284,10 +285,12 @@ bool hosts_npdm(const Host *h, uint8_t **out, size_t *n, char *err, size_t errn)
     }
     if (h->id == SEEDSOW_TITLE && seedsow_npdm(out, n)) return true;
     // Seedsow too: a card without the PC's files learns it from the loader like any other host
-    snprintf(text, sizeof(text), "%s's permissions aren't known yet. Start it once with this loader, restart, run the "
-             "launcher (A) and open SeedSwap again.", h->name);
+    snprintf(text, sizeof(text), "%s's permissions aren't known yet. Start it once with this loader, restart, %s "
+             "and open SeedSwap again.", h->name, g_boot_step);
     return say(err, errn, text);
 }
+
+void hosts_boot_step(const char *step) { g_boot_step = step ? step : "run the launcher (A)"; }
 
 // Seedsow's NPDM from before hosts had folders: the file older versions kept, else any game image
 // built for it (then kept in that file). out NULL: only whether there is one.

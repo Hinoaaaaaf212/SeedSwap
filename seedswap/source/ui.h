@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define SEEDSWAP_VERSION "0.13.1"
+#define SEEDSWAP_VERSION "0.14.0"
 
 void ui_init(void);
 bool ui_input(uint64_t down);  // false = quit

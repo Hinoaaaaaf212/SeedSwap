@@ -76,6 +76,15 @@ void save_allow_only(const Uid *uid);
 // look into a save that isn't the play user's: it finds the user with the exploit save (users.c).
 // 1 = found (found = the name), 0 = none of them, -1 = the save couldn't be opened.
 int save_find_files(uint64_t title, const Uid *uid, const char *const *names, int n, char *found, size_t fn);
+// The other look into such a save: small files under `dir` (down to `depth` folder levels, each at most
+// max_bytes, at most 256 files) are read, read-only, and check() is asked about each. It finds the user
+// with ns2jb's SmileBASIC bootstrap (users.c). 1 = check() said yes (found = that file's path),
+// 0 = no file did, -1 = the save couldn't be opened.
+#define SMILEBASIC_TITLE 0x0100c9100b06a000ULL
+#define SMILEBASIC_DEMO_TITLE 0x0100b4b00f9f6000ULL
+typedef bool (*SaveFileCheck)(const char *path, const uint8_t *data, size_t n, void *ctx);
+int save_check_files(uint64_t title, const Uid *uid, const char *dir, int depth, size_t max_bytes, SaveFileCheck check,
+                     void *ctx, char *found, size_t fn);
 int save_mount(const Uid *uid, bool write);
 int save_commit(void);
 void save_unmount(void);

@@ -3,7 +3,7 @@
 Play your Switch 1 games on a Switch 2. SeedSwap runs them in place of Seedsow Lullaby or another
 Switch 1 game you have installed.
 
-Needs firmware 23.0.1 and kaiHEN.
+Needs firmware 23.0.1 and kaiHEN 20261123 (20261117.1 also works).
 
 > [!WARNING]
 > **SeedSwap can brick your console.** It's rare, but it can happen. SeedSwap runs on the same base
@@ -24,7 +24,7 @@ Needs firmware 23.0.1 and kaiHEN.
 
 1. Download `build.exe` and `seedswap.nro` from the [latest release](../../releases/latest). Without
    Windows, use Python instead of `build.exe`.
-2. Follow **[INSTALL.md](INSTALL.md)**.
+2. Follow **[INSTALL.md](INSTALL.md)**. No Seedsow? See its SmileBASIC 4 section.
 
 > **Use only your own games and keys.** This repository has neither. Don't download them.
 
@@ -63,16 +63,18 @@ launcher, seedsow-semi-untethered, and kurumuz's RO helper. It checks every file
 | Path | What |
 |---|---|
 | `seedswap/` | SeedSwap's source |
-| `save/` | our files for the Seedsow save (the A/B launcher entries and the loader start) |
+| `save/` | our files for the Seedsow save (the A/B launcher entries, the loader start, and the kaiHEN stage, which takes kaiHEN 20261123's SD layout from seedsow-semi-untethered d2e6fac) |
 | `sd/` | our SD card files (the loader stage and the install image) |
 | `loader/` | our changes to ns2jb-modloader, and the image tools |
+| `ns2jb-route/` | the command for SmileBASIC 4 and ns2jb (no Seedsow), with the ns2jb-modloader parts it uses |
 | `build.py` | makes the save and SD files |
 | `upload_save.py` | updates an existing seedsow-semi-untethered save over the network |
 
 ## Licences
 
-- **GPL-2.0 (`LICENSE`)** for everything here except the parts below. `save/`, `sd/` and `loader/`
-  come from seedsow-semi-untethered and ns2jb-modloader, both GPL-2.0.
+- **GPL-2.0 (`LICENSE`)** for everything here except the parts below. `save/`, `sd/`, `loader/` and
+  `ns2jb-route/` come from seedsow-semi-untethered and ns2jb-modloader, both GPL-2.0.
+  `ns2jb-route/vendor/ns2jb-modloader/` keeps its own licence files (`VENDOR.md` lists them).
 - **MIT:** seedsow-semi-untethered's CivSwitchFS part (`licenses/CivSwitchFS-MIT.txt`).
 - **MIT or public domain:** `seedswap/source/vendor/stb_image.h`.
 - **Ubuntu font licence:** `seedswap/source/font_data.c` and `seedswap/assets/fonts/`

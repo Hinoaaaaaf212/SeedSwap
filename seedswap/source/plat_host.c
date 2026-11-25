@@ -308,6 +308,64 @@ int save_find_files(uint64_t title, const Uid *uid, const char *const *names, in
     return 0;
 }
 
+typedef struct {
+    size_t max;
+    SaveFileCheck check;
+    void *ctx;
+    char *found;
+    size_t fn;
+    int files;
+    size_t root_len;
+} SaveWalk;
+
+static int walk_save(SaveWalk *w, const char *dir, int depth) {
+    DIR *d = opendir(dir);
+    if (!d) return 0;
+    int hit = 0;
+    struct dirent *de;
+    while (!hit && w->files < 256 && (de = readdir(d))) {
+        if (!strcmp(de->d_name, ".") || !strcmp(de->d_name, "..")) continue;
+        char path[1200];
+        struct stat st;
+        snprintf(path, sizeof(path), "%s/%s", dir, de->d_name);
+        if (stat(path, &st) != 0) continue;
+        if (S_ISDIR(st.st_mode)) {
+            if (depth > 0) hit = walk_save(w, path, depth - 1);
+            continue;
+        }
+        w->files++;
+        if (!S_ISREG(st.st_mode) || st.st_size <= 0 || (size_t)st.st_size > w->max) continue;
+        FILE *f = fopen(path, "rb");
+        if (!f) continue;
+        uint8_t *buf = malloc((size_t)st.st_size);
+        if (buf && fread(buf, 1, (size_t)st.st_size, f) == (size_t)st.st_size &&
+            w->check(path + w->root_len, buf, (size_t)st.st_size, w->ctx)) {
+            hit = 1;
+            if (w->found) snprintf(w->found, w->fn, "%s", path + w->root_len);
+        }
+        free(buf);
+        fclose(f);
+    }
+    closedir(d);
+    return hit;
+}
+
+int save_check_files(uint64_t title, const Uid *uid, const char *dir, int depth, size_t max_bytes, SaveFileCheck check,
+                     void *ctx, char *found, size_t fn) {
+    char h[33], root[800], buf[600], start[1000];
+    for (int i = 0; i < 16; i++) snprintf(h + i * 2, 3, "%02x", uid->b[i]);
+    snprintf(root, sizeof(root), "%s/%s", saves_root_of(title, buf, sizeof(buf)), h);
+    const char *locked = getenv("SEEDSWAP_SAVE_LOCKED");
+    struct stat st;
+    if ((locked && strstr(locked, h)) || stat(root, &st) != 0) {
+        snprintf(g_err, sizeof(g_err), "open save (read-only check) %s: can't", h);
+        return -1;
+    }
+    snprintf(start, sizeof(start), "%s%s", root, strcmp(dir, "/") ? dir : "");
+    SaveWalk w = {max_bytes, check, ctx, found, fn, 0, strlen(root)};
+    return walk_save(&w, start, depth);
+}
+
 int save_mount(const Uid *uid, bool write) {
     (void)write;
     char h[33];

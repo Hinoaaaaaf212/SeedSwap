@@ -78,6 +78,9 @@ bool npdm_for_game(const uint8_t *host, size_t hn, const uint8_t *game, size_t g
 // (LEGACY_HOST_NPDM) or one found in a game image built for it; without those it comes from the
 // loader like any other host's (hosts_load counts those sources as known).
 bool hosts_npdm(const Host *h, uint8_t **out, size_t *n, char *err, size_t errn);
+// The step that sets up the loader after a restart, for hosts_npdm's message (lib_boot_step's text;
+// a static string). Default "run the launcher (A)".
+void hosts_boot_step(const char *step);
 
 // ---- loader reports
 typedef struct HostProbe HostProbe;

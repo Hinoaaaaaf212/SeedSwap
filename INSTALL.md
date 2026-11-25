@@ -9,7 +9,10 @@ About half an hour the first time.
 
 ## You need
 
-- A Switch 2 on **firmware 23.0.1**, with **[kaiHEN](https://github.com/ouncebrew/kaihen)** set up.
+- A Switch 2 on **firmware 23.0.1**, with **[kaiHEN](https://github.com/ouncebrew/kaihen) 20261123**
+  on the SD card (20261117.1 also works). Copy **all** of kaiHEN's zip to the root of the SD card,
+  not only its `sdcard/` folder: Seedsow needs `bootstrap.bin` and `ro/` too. The first run moves
+  the files to `kaihen/bin`.
 - **Seedsow Lullaby** installed: the full game or the demo.
 - **A spare user** for the exploit save (System Settings → Users → Add User). Don't play on it.
 - A PC: Windows for `build.exe`, or any PC with Python 3.8 or newer.
@@ -113,10 +116,48 @@ Run the launcher (Seedsow → A) every time you turn the console on.
 
 Each game keeps its own save.
 
+## Without Seedsow: SmileBASIC 4 and ns2jb
+
+No Seedsow? SeedSwap also runs with ns2jb and SmileBASIC 4. Nothing is written to a save, but you
+run one command on a computer every time you turn the console on.
+
+**You need:**
+
+- SmileBASIC 4 or its demo, with [ns2jb](https://gitlab.com/kurumuz/ns2jb)'s one-time setup done, on
+  a spare user. Don't play on that user: SeedSwap never lets it play.
+- A computer with macOS or Linux, or Windows with WSL, and Node.js 22 or newer.
+- ns2jb at commit `ae33da1`: `git -C ns2jb fetch`, then `git -C ns2jb checkout ae33da1`.
+- [kaiHEN](https://github.com/ouncebrew/kaihen) 20261123, unzipped.
+
+**Steps:**
+
+1. Make the files with Python (step 1). You need the source code folder: the command is in its
+   `ns2jb-route` folder.
+2. On the spare user, open SmileBASIC 4 and enter Direct mode.
+3. In the source code folder, run:
+
+   ```sh
+   node ns2jb-route/seedswap-boot.cjs --ns2jb ~/ns2jb --kaihen ~/kaiHEN-20261123
+   ```
+
+   Use your own folders. If the computer has more than one network address, add the one the console
+   can reach at the end.
+4. Enter the lines it shows in SmileBASIC. If a try fails, restart the console, open SmileBASIC 4
+   again and enter the lines again. The command keeps waiting.
+5. When it says **Done**, close SmileBASIC 4. Don't restart.
+6. The first time, it copies the files to the SD card. Restart and do steps 2 to 5 again: now
+   SeedSwap's loader is on too. Then do steps 3 and 4 of **First run**, and run the command (not the
+   launcher) where it says the launcher.
+
+Do steps 2 to 5 every time you turn the console on. Add games as in step 5 above; SmileBASIC 4 can be
+the host too.
+
 ## Updating
 
 - **New SeedSwap:** copy the new `seedswap.nro` to `SD:/switch/seedswap.nro`.
 - **New SD files or save:** do step 1 again with the new release, then repeat steps 2 and 3.
+- **New kaiHEN:** copy all of its zip to the root of the SD card. The next run of A moves it into
+  place, if this save supports that kaiHEN.
 
 Don't install system updates: kaiHEN needs firmware 23.0.1.
 
@@ -137,9 +178,13 @@ Don't install system updates: kaiHEN needs firmware 23.0.1.
 | ns2-savekit says the save doesn't exist (`0x7d402`) | Start Seedsow once on that user, close it, and try again. |
 | No launcher menu | Start Seedsow on the spare user. |
 | "not the expected Seedsow build" | Your Seedsow version isn't supported. Nothing was changed. |
+| "kaiHEN build this save doesn't support" or "required SD files missing" | Copy all of the kaiHEN 20261123 zip (`bootstrap.bin`, `ro` and `sdcard`) to the root of the SD card, and run A again. |
 | A says to power off | Hold POWER for 12 seconds → Power off. Turn it on and try again. |
 | A game finds no save | Start the host on the user who plays. Just picked that user? Restart and run A first. |
 | "The loader is set up for a different user" | Restart and run A. Still there? Saves → Y. |
 | "permissions aren't known yet" | Start that host from HOME once, then open SeedSwap again. |
 | A dump doesn't convert | SeedSwap says why. The **Log** tab has details. |
 | You want your old save back | In ns2-savekit, back up, then **3) Replace** with the folder of your first backup. |
+| seedswap-boot: "isn't commit ae33da1" | Run the two `git` commands it shows. |
+| seedswap-boot: "This kaiHEN build isn't one SeedSwap knows" | Use kaiHEN 20261123. |
+| seedswap-boot: "restart the console" | Restart, open SmileBASIC 4, and run the command again. |

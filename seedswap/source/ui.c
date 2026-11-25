@@ -311,8 +311,10 @@ static void host_line(int i, char *out, size_t n) {
     const char *game = "Itself";
     for (int k = 0; k < L->count; k++)
         if (!L->games[k].builtin && L->games[k].host == i) game = L->games[k].name;
+    char served[80];
+    snprintf(served, sizeof(served), "  \xe2\x80\xa2  restart and %s first", lib_boot_step(L, false));
     snprintf(out, n, "%s%s%s", game,
-             !lib_host_served(L, h) ? "  \xe2\x80\xa2  restart and run the launcher first"
+             !lib_host_served(L, h) ? served
              : !h->npdm ? "  \xe2\x80\xa2  start it once first" : "",
              L->play_user_set && !h->user_save ? "  \xe2\x80\xa2  no save for the play user yet" : "");
 }
@@ -659,8 +661,8 @@ static void run_action(void) {
         bool ok = lib_host_add(L, app.id, app.name, err, sizeof(err));
         reload();
         if (ok)
-            message(C_ACCENT, "Almost ready", "Restart and run the launcher (A). Then start %s once from the HOME menu "
-                    "and open SeedSwap again.", name);
+            message(C_ACCENT, "Almost ready", "Restart and %s. Then start %s once from the HOME menu "
+                    "and open SeedSwap again.", lib_boot_step(L, false), name);
         else message(C_BAD, "Not set up", "%s", err);
         break;
     }
@@ -683,9 +685,11 @@ static void run_action(void) {
         reload();
         const char *running = U.lib.loader != LOADER_OFF && U.lib.loader_guard ? U.lib.loader_guard_user : "";
         bool restart = users_guard_follows() && running[0] && strcmp(running, row.hex);
+        char again[96];
+        snprintf(again, sizeof(again), "\n\nRestart and %s before switching games.", lib_boot_step(&U.lib, false));
         if (ok)
             message(C_ACCENT, "Play user set", "Games now run on %s.%s%s", row.name,
-                    restart ? "\n\nRestart and run the launcher (A) before switching games." : "",
+                    restart ? again : "",
                     U.lib.play_user_has_save ? "" : "\n\nStart the host game on this user once before switching games.");
         else message(C_BAD, "Not changed", "%s", err);
         break;
@@ -727,15 +731,15 @@ static void users_choose(void) {
     const char *guard = U.lib.loader != LOADER_OFF && U.lib.loader_guard ? U.lib.loader_guard_user : U.lib.image_guard_user;
     char note[400] = "";
     if (users_guard_follows() && guard[0] && strcmp(guard, u->hex))
-        snprintf(note, sizeof(note), "\n\nThe loader will be set up for %s. Restart and run the launcher (A) before "
-                 "switching games.", u->name);
+        snprintf(note, sizeof(note), "\n\nThe loader will be set up for %s. Restart and %s before "
+                 "switching games.", u->name, lib_boot_step(&U.lib, false));
     else if (guard[0] && !u->guard)
         snprintf(note, sizeof(note), "\n\nThe loader is set up for another user (%.8s\xe2\x80\xa6), so switching won't "
                  "work until it's set up for %s.", guard, u->name);
     if (u->play) snprintf(U.dlg_title, sizeof(U.dlg_title), "Set up the loader for %s?", u->name);
     if (u->play)
-        snprintf(U.dlg_body, sizeof(U.dlg_body), "The loader will be set up for %s again. Restart and run the "
-                 "launcher (A) before switching games.", u->name);
+        snprintf(U.dlg_body, sizeof(U.dlg_body), "The loader will be set up for %s again. Restart and %s "
+                 "before switching games.", u->name, lib_boot_step(&U.lib, false));
     else
         snprintf(U.dlg_body, sizeof(U.dlg_body), "Games will run on %s, each with its own save. Its save is backed up "
                  "before every switch.%s", u->name, note);
@@ -832,7 +836,7 @@ static const char *when_text(void) {
     else if (L->loader == LOADER_LIVE)
         snprintf(buf, sizeof(buf), "Start %s on %s to play.", lib_host(L)->name, L->play_user_name);
     else
-        snprintf(buf, sizeof(buf), "Run the launcher (A), then start %s on %s to play.", lib_host(L)->name,
+        snprintf(buf, sizeof(buf), "%s, then start %s on %s to play.", lib_boot_step(L, true), lib_host(L)->name,
                  L->play_user_name);
     return buf;
 }
@@ -1059,8 +1063,8 @@ static void add_host_confirm(int app) {
     U.dlg_color = C_ACCENT;
     snprintf(U.dlg_title, sizeof(U.dlg_title), "Use %s as a host?", a->name[0] ? a->name : hex);
     snprintf(U.dlg_body, sizeof(U.dlg_body), "It takes a free slot (%d left) and still plays as itself until you put a "
-             "game in it.\n\nAfterwards: restart, run the launcher (A), start it once and open SeedSwap again.",
-             U.lib.hs.spare_count);
+             "game in it.\n\nAfterwards: restart, %s, start it once and open SeedSwap again.",
+             U.lib.hs.spare_count, lib_boot_step(&U.lib, false));
 }
 
 static void hosts_choose(void) {

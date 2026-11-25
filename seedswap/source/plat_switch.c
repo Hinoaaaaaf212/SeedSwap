@@ -304,6 +304,64 @@ int save_find_files(uint64_t title, const Uid *uid, const char *const *names, in
     return hit;
 }
 
+typedef struct {
+    FsFileSystem *fs;
+    size_t max;
+    SaveFileCheck check;
+    void *ctx;
+    char *found;
+    size_t fn;
+    int files;
+} SaveWalk;
+
+static int walk_save(SaveWalk *w, const char *dir, int depth) {
+    FsDir d;
+    if (R_FAILED(fsFsOpenDirectory(w->fs, dir, FsDirOpenMode_ReadDirs | FsDirOpenMode_ReadFiles, &d))) return 0;
+    FsDirectoryEntry e[8];
+    s64 n = 0;
+    int hit = 0;
+    while (!hit && w->files < 256 && R_SUCCEEDED(fsDirRead(&d, &n, 8, e)) && n > 0) {
+        for (s64 i = 0; i < n && !hit && w->files < 256; i++) {
+            char path[FS_MAX_PATH];
+            snprintf(path, sizeof(path), "%s%s%s", dir, dir[0] && dir[strlen(dir) - 1] == '/' ? "" : "/", e[i].name);
+            if (e[i].type == FsDirEntryType_Dir) {
+                if (depth > 0) hit = walk_save(w, path, depth - 1);
+                continue;
+            }
+            w->files++;
+            if (e[i].file_size <= 0 || (size_t)e[i].file_size > w->max) continue;
+            FsFile f;
+            if (R_FAILED(fsFsOpenFile(w->fs, path, FsOpenMode_Read, &f))) continue;
+            uint8_t *buf = malloc((size_t)e[i].file_size);
+            u64 got = 0;
+            if (buf && R_SUCCEEDED(fsFileRead(&f, 0, buf, (u64)e[i].file_size, FsReadOption_None, &got)) &&
+                got == (u64)e[i].file_size && w->check(path, buf, (size_t)got, w->ctx)) {
+                hit = 1;
+                if (w->found) snprintf(w->found, w->fn, "%s", path);
+            }
+            free(buf);
+            fsFileClose(&f);
+        }
+    }
+    fsDirClose(&d);
+    return hit;
+}
+
+int save_check_files(uint64_t title, const Uid *uid, const char *dir, int depth, size_t max_bytes, SaveFileCheck check,
+                     void *ctx, char *found, size_t fn) {
+    FsSaveDataAttribute attr = {0};
+    attr.application_id = title;
+    memcpy(&attr.uid, uid->b, 16);
+    attr.save_data_type = FsSaveDataType_Account;
+    FsFileSystem fs;
+    Result rc = fsOpenReadOnlySaveDataFileSystem(&fs, FsSaveDataSpaceId_User, &attr);
+    if (R_FAILED(rc)) { set_err("open save (read-only check)", rc); return -1; }
+    SaveWalk w = {&fs, max_bytes, check, ctx, found, fn, 0};
+    int hit = walk_save(&w, dir, depth);
+    fsFsClose(&fs);
+    return hit;
+}
+
 int save_mount(const Uid *uid, bool write) {
     save_unmount();
     if (never_open(uid)) { snprintf(g_err, sizeof(g_err), "refused: not the play user's save"); return -1; }
