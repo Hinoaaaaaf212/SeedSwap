@@ -11,8 +11,7 @@ Needs firmware 23.0.1 and kaiHEN 20261123 (20261117.1 also works).
 > **[latest release](../../releases/latest)** and the `main` branch.
 >
 > **Nintendo can ban your console.** Installing games Nintendo didn't sign, and patching the system so
-> they start, is the kind of thing Nintendo bans consoles for. A banned console loses online play, the
-> eShop and system updates. Keep the console offline while you use this, and use it at your own risk.
+> they start, is the kind of thing Nintendo bans consoles for. Use it at your own risk!!
 
 > [!NOTE]
 > **Work in progress.** This is a project I keep changing. The **[latest release](../../releases/latest)**
