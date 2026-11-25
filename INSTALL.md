@@ -36,14 +36,14 @@ their authors and check every file.
 
 **With `build.exe` (Windows):**
 
-1. From the [latest release](../../releases/latest), download **`build.exe`** and **`seedswap.nro`**
+1. From the [experimental release](../../releases/tag/v0.15.0-experimental), download **`build.exe`** and **`seedswap.nro`**
    into one folder.
 2. Double-click **`build.exe`**. If Windows warns about an unknown app, click **More info → Run
    anyway**.
 
 **With Python (any PC, Python 3.8 or newer):**
 
-1. From the [latest release](../../releases/latest), download **`seedswap.nro`** and **Source code
+1. From the [experimental release](../../releases/tag/v0.15.0-experimental), download **`seedswap.nro`** and **Source code
    (zip)**.
 2. Unzip the source code, and put `seedswap.nro` in that folder.
 3. Open a terminal there and run `python3 build.py --nro seedswap.nro`. On Windows, use `py` in place
@@ -118,12 +118,30 @@ Run the launcher (Seedsow → A) every time you turn the console on.
 2. Copy your dumps to `SD:/seedswap/nsp/`, with their updates and DLC. SeedSwap reads `.nsp`, `.nsz`,
    `.xci` and `.xcz`.
 3. In SeedSwap, open **Convert** and press **Y**. Pick the game and press **A**. Its update goes in too.
-   - To add a DLC, pick it and press **A**. A game can have up to 16. Press A again to remove one.
+   - To add a DLC, pick it and press **A**. A game can have up to 100. Press A again to remove one.
+   - To add all of a game's DLC at once, pick one of its DLC, press **A**, then **X**. Afterwards
+     SeedSwap offers to delete the DLC dumps. Keep them if you'll update the game here later.
 4. In **Library**, press **-** and pick a host: Seedsow or any installed Switch 1 game.
    - If it says **start it once first**, start that game from HOME once, then open SeedSwap again.
 5. Pick a game and press **A**. Then start the host from HOME, on the user who plays.
 
 Each game keeps its own save.
+
+## 6. Put a game on the HOME menu (experimental)
+
+This installs a game on the SD card with its own HOME icon, so you start it from HOME instead of
+through a host. Read the ban warning at the top first.
+
+1. Copy the game's dump to `SD:/seedswap/nsp/`, with its update if you have one, and your
+   `prod.keys` to `SD:/switch/prod.keys`.
+2. In SeedSwap, open **Convert**, pick the game and press **X**. Check the name, version and size,
+   then press **A**.
+3. Start the game from HOME.
+
+- It starts only while the loader is in: run the launcher (Seedsow → A) after every restart first.
+- It has its own save, separate from the copy in SeedSwap's library.
+- To take it off HOME, pick the same dump in **Convert**, press **X**, then **X** again. Its save is
+  kept.
 
 ## Without Seedsow: SmileBASIC 4 and ns2jb
 
@@ -170,6 +188,9 @@ the host too.
 
 - **New SeedSwap:** copy the new `seedswap.nro` to `SD:/switch/seedswap.nro`.
 - **New SD files or save:** do step 1 again with the new release, then repeat steps 2 and 3.
+- **Coming from 0.14 or older:** you need the new SD files (HOME games need the new loader image).
+  They reset the play user and any hosts you added: after the next launcher run, go to **Saves**,
+  press **Y** and pick your user again, restart, and add your hosts again (**Library**, **-**).
 - **New kaiHEN:** copy all of its zip to the root of the SD card. The next run of A moves it into
   place, if this save supports that kaiHEN.
 

@@ -35,7 +35,7 @@ Needs firmware 23.0.1 and kaiHEN 20261123 (20261117.1 also works).
 
 ## Get started
 
-1. Download `build.exe` and `seedswap.nro` from the [latest release](../../releases/latest). Without
+1. Download `build.exe` and `seedswap.nro` from the [experimental release](../../releases/tag/v0.15.0-experimental). Without
    Windows, use Python instead of `build.exe`.
 2. Follow **[INSTALL.md](INSTALL.md)**. No Seedsow? See its SmileBASIC 4 section.
 
@@ -44,6 +44,7 @@ Needs firmware 23.0.1 and kaiHEN 20261123 (20261117.1 also works).
 ## What it does
 
 - Converts your game dumps on the console, with their updates and DLC.
+- Puts a game on the HOME menu with its own icon (experimental).
 - Switches between games. Each game keeps its own save.
 - Runs your games in place of Seedsow or any installed Switch 1 game (the host).
 - Keeps your games away from other users' saves (the save guard).
