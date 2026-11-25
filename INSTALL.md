@@ -1,5 +1,14 @@
 # Installing SeedSwap
 
+> [!CAUTION]
+> **This is the experimental branch.** It adds Add to HOME, which installs your games on the HOME
+> menu. I haven't had much time to test it yet, so expect bugs. For the stable version, use the
+> **[latest release](../../releases/latest)** and the `main` branch.
+>
+> **Nintendo can ban your console.** Installing games Nintendo didn't sign, and patching the system so
+> they start, is the kind of thing Nintendo bans consoles for. A banned console loses online play, the
+> eShop and system updates. Keep the console offline while you use this, and use it at your own risk.
+
 > [!WARNING]
 > **SeedSwap can brick your console.** It's rare, but it can happen. SeedSwap runs on the same base
 > as seedsow-semi-untethered and uses the same Seedsow file system code (Seedsow FS), so anything that
