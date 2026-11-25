@@ -108,4 +108,9 @@ jobs:
           extra=() note=""
           case "$GITHUB_REF_NAME" in *-*) extra=(--prerelease --latest=false)
             note="Experimental: a test build, not yet run on a console. The latest release is the stable one. " ;; esac
+          # A tag moved to a newer commit: replace the files of its existing release, keep its notes.
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" seedswap.nro build.exe --clobber --repo "$GITHUB_REPOSITORY"
+            exit 0
+          fi
           gh release create "$GITHUB_REF_NAME" seedswap.nro build.exe "${extra[@]}" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes "${note}Put build.exe and seedswap.nro in one folder and run build.exe (Windows). It makes the SD card files and the Seedsow save. Without Windows: python3 build.py --nro seedswap.nro. Steps: INSTALL.md."
