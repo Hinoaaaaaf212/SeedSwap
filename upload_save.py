@@ -14,8 +14,13 @@ It sends every file in out/save/ except:
     switch/seedswap.nro.
 inject2.lua (the launcher menu) goes last, so the new menu only appears once everything else is in.
 Each file is one PUT /save?path=<name>; the server writes it and commits the save.
+
+Saves made with mac2jb or the early-November http.lua take at most 28,672 bytes per file (issue 3).
+Like seedsow-semi-untethered's own uploader, a Lua file over 28,600 bytes is sent with its comment
+lines emptied and, if that is not enough, its indentation dropped. Line numbers stay the same.
 """
 import argparse
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -25,6 +30,7 @@ PROTECTED = {"core.lua", "http.lua", "inject.lua", "inject.iet", "proggy.ttf",
              "save9999.dat", "saveg.dat", "system.dat"}
 TOO_BIG = {"seedswap.nro"}
 BODY_CAP = 0x40000 - 0x1000      # http.lua's limit
+WIRE_CAP = 28600                 # under 0x7000, the limit of older http.lua saves
 LAST = "inject2.lua"
 
 
@@ -37,6 +43,22 @@ def request(method, url, data=None, timeout=60):
             return r.status, r.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         return e.code, e.read().decode("utf-8", "replace")
+
+
+def wire(p):
+    """The bytes sent for file p: LF line ends; a Lua file over WIRE_CAP shrunk as described above."""
+    data = p.read_bytes()
+    if p.suffix != ".lua":
+        return data
+    text = data.decode("utf-8").replace("\r\n", "\n")
+    if len(text.encode()) <= WIRE_CAP:
+        return text.encode()
+    if re.search(r"\[=*\[", text):
+        return text.encode()       # a long string or block comment: leave it whole
+    text = "\n".join("" if re.match(r"^\s*--", line) else line for line in text.split("\n"))
+    if len(text.encode()) > WIRE_CAP:
+        text = "\n".join(re.sub(r"^\s+", "", line) for line in text.split("\n"))
+    return text.encode()
 
 
 def main(argv=None):
@@ -55,14 +77,16 @@ def main(argv=None):
     files.sort(key=lambda p: p.name == LAST)
     if not any(p.name == LAST for p in files):
         sys.exit("%s has no %s: is this the Seedsow save from build.py?" % (src, LAST))
-    big = [p.name for p in files if p.stat().st_size > BODY_CAP]
+    sent = {p.name: wire(p) for p in files}
+    big = [p.name for p in files if len(sent[p.name]) > BODY_CAP]
     if big:
         sys.exit("too big for the launcher's server: " + ", ".join(big))
 
     base = "http://%s:%d" % (a.switch_ip, a.port)
     print("%d files to %s:" % (len(files), base))
     for p in files:
-        print("  %-20s %7d B" % (p.name, p.stat().st_size))
+        n = len(sent[p.name])
+        print("  %-20s %7d B%s" % (p.name, n, "" if n == p.stat().st_size else " (comments left out)"))
     if a.dry_run:
         return 0
 
@@ -74,11 +98,14 @@ def main(argv=None):
         sys.exit("%s isn't the launcher's HTTP server (got %d)" % (base, code))
 
     for i, p in enumerate(files, 1):
-        data = p.read_bytes()
+        data = sent[p.name]
         code, body = request("PUT", "%s/save?path=%s" % (base, p.name), data)
         want = "wrote %d bytes to save:/%s" % (len(data), p.name)
         if code != 200 or want not in body:
             print("FAILED at %s: %d %s" % (p.name, code, body.strip()))
+            if code == 413:
+                print("This save's HTTP server takes smaller files than this one. Use ns2jb and ns2-savekit")
+                print("instead (INSTALL.md, step 3).")
             print("Nothing after it was sent. Restart Seedsow, press Y and run this again.")
             return 1
         print("[%d/%d] %s" % (i, len(files), p.name))
