@@ -29,7 +29,7 @@ typedef struct {
     bool slot;              // a per-game save slot exists for the play user
     TreeStats slot_stats;
     CompatInfo compat;      // Nintendo's compatibility patches for this game (compat_game.h)
-    char dlc[200], dlc_names[200];  // add-on content built in: IDs and names (game.ini dlc, dlc_names)
+    char dlc[DLC_IDS_TEXT], dlc_names[DLC_NAMES_TEXT];  // add-on content built in: IDs and names (game.ini dlc, dlc_names)
     uint64_t compat_words[4];  // Nintendo's settings put in (game.ini compat_words: graphics, movie, audio, misc)
     bool has_compat_words;
     bool dlc_removable;     // the image without it is kept (exefs-nodlc.nsp)
@@ -141,4 +141,7 @@ bool lib_dlc_built_in(const Game *g, uint64_t dlc_title_id);
 // siblings: the game's other DLC dumps on the card (dlc_game.h)
 bool lib_dlc_add(Library *L, int idx, const char *nsp_path, const char *keys_path, const char *const *siblings,
                  int nsiblings, ProgressFn cb, DlcResult *res, char *err, size_t errn);
+// all of a game's DLC dumps given at once (dlc_add_many)
+bool lib_dlc_add_many(Library *L, int idx, const char *const *nsp_paths, int npaths, const char *keys_path,
+                      const char *const *siblings, int nsiblings, ProgressFn cb, DlcResult *res, char *err, size_t errn);
 bool lib_dlc_remove(Library *L, int idx, char *err, size_t errn);

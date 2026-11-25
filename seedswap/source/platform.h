@@ -107,3 +107,27 @@ int apps_list(AppEntry *out, int max);
 // read from the console's own system the way Loader reads it to start the program. Read-only.
 // 0 = *out holds *size bytes (caller frees); -1 = err says why.
 int plat_read_system_patcher(uint8_t **out, size_t *size, char *err, size_t errn);
+
+// ---- HOME installs (home.c): a game's own content on the SD card through ncm (storage 5), its content
+// lists in ncm's SD database and its application record in ns, as a normal install has them. IDs are the
+// raw 16-byte ncm forms: content and placeholder IDs, and NcmContentMetaKey {u64 id, u32 version, u8 type,
+// u8 install type, 2 padding}. 0 = done; otherwise a nonzero code (the result) and home_last_error() says why.
+// The PC preview keeps them as files under SEEDSWAP_HOME (no such folder: every call fails).
+int home_sd_open(void);                    // opens the SD storage and its database; before the others
+void home_sd_close(void);
+// 1 = ns has an application record for the ID (an installed game, SeedSwap's or not), 0 = none, <0 = error
+int home_record_exists(uint64_t app);
+int home_placeholder_create(const uint8_t content[16], uint8_t placeholder_out[16], int64_t size);
+int home_placeholder_write(const uint8_t placeholder[16], int64_t off, const void *buf, size_t n);
+int home_placeholder_delete(const uint8_t placeholder[16]);
+int home_content_register(const uint8_t content[16], const uint8_t placeholder[16]);
+int home_content_delete(const uint8_t content[16]);        // 0 also when it isn't there
+bool home_content_has(const uint8_t content[16]);
+int home_meta_set(const uint8_t key[16], const void *meta, size_t n);   // and commit
+int home_meta_remove(const uint8_t key[16]);                            // and commit; 0 if it isn't there
+// keys: the meta keys in the database; records: {key, u8 storage, 7 padding} as ns takes them
+int home_record_push(uint64_t app, const uint8_t (*keys)[16], int n);
+int home_record_delete(uint64_t app);
+int home_launch_version(uint64_t app, uint32_t version);   // avm: the version the game may start at
+int home_control_invalidate(uint64_t app);                  // ns drops its cached name and icon
+const char *home_last_error(void);

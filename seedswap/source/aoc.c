@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include "aoc.h"
 
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -172,11 +173,47 @@ static bool string_argument(const NsoImage *nso, uint32_t call, char *out, size_
     return false;
 }
 
+// The RomFS mount name from the game's own paths, for a MountRom call whose name is a run-time string (Super
+// Smash Bros. Ultimate keeps it in a std::string member). nn::ro reads NRR files only from the RomFS's /.nrr
+// folder, so a game that loads NROs names them "<mount>:/.nrr/...". True when main has exactly one such name.
+static bool nrr_mount_name(const NsoImage *main, char *out, size_t n) {
+    static const char KEY[] = ":/.nrr/";
+    const uint8_t *img = main->image, *end = img + main->image_size;
+    bool have = false;
+    for (const uint8_t *p = img; end - p >= (ptrdiff_t)sizeof(KEY) - 1;) {
+        const uint8_t *hit = memchr(p, ':', (size_t)(end - p));
+        if (!hit || end - hit < (ptrdiff_t)sizeof(KEY) - 1) break;
+        p = hit + 1;
+        if (memcmp(hit, KEY, sizeof(KEY) - 1)) continue;
+        const uint8_t *start = hit;
+        while (start > img && start[-1] && hit - start < 16) start--;
+        size_t len = (size_t)(hit - start);
+        bool word = len > 0 && len < n && (start == img || !start[-1]);
+        for (size_t i = 0; word && i < len; i++)
+            word = (start[i] >= 'a' && start[i] <= 'z') || (start[i] >= 'A' && start[i] <= 'Z') ||
+                   (start[i] >= '0' && start[i] <= '9') || start[i] == '_';
+        if (!word) continue;
+        if (have && (strlen(out) != len || memcmp(out, start, len))) return false;   // two names: undecided
+        memcpy(out, start, len);
+        out[len] = 0;
+        have = true;
+    }
+    return have;
+}
+
 bool aoc_main_uses(const NsoImage *main) {
     Syms s;
     if (!syms_open(main, &s)) return false;
     for (int k = 0; k < AOC_TARGETS; k++)
         if (imports(&s, REPLACED[k])) return true;
+    return false;
+}
+
+bool aoc_module_mounts(const NsoImage *nso) {
+    Syms s;
+    if (!syms_open(nso, &s)) return true;  // not known: as if it did
+    for (uint32_t i = 0; i < s.count; i++)
+        if (!sym_value(&s, i) && strstr(sym_name(&s, i), "MountAddOnContent")) return true;
     return false;
 }
 
@@ -221,14 +258,15 @@ bool aoc_locate(const NsoImage *sdk, const NsoImage *main, AocSites *out, char *
         snprintf(err, errn, "The game does not mount its RomFS the usual way (no nn::fs::MountRom call).");
         return false;
     }
-    int found = 0;
+    int found = 0, unnamed = 0;
+    uint32_t first_unnamed = 0;
     for (uint32_t at = 0; at + 4 <= main->size[0]; at += 4) {
         uint32_t w = rd32(main->image + at);
         if (w >> 26 != 0x25 || branch_target(w, at) != stub) continue;
         char name[32];
-        if (!string_argument(main, at, name, sizeof(name))) {
-            snprintf(err, errn, "The game's RomFS mount at main+0x%x does not form its name the expected way.", at);
-            return false;
+        if (!string_argument(main, at, name, sizeof(name))) {   // a run-time name: decided below
+            if (!unnamed++) first_unnamed = at;
+            continue;
         }
         if (found && strcmp(name, out->mount_name)) {
             snprintf(err, errn, "The game mounts its RomFS under two names (%s, %s).", out->mount_name, name);
@@ -236,6 +274,20 @@ bool aoc_locate(const NsoImage *sdk, const NsoImage *main, AocSites *out, char *
         }
         snprintf(out->mount_name, sizeof(out->mount_name), "%s", name);
         found++;
+    }
+    if (unnamed) {
+        char name[32];
+        if (!nrr_mount_name(main, name, sizeof(name))) {
+            snprintf(err, errn, "The game's RomFS mount at main+0x%x does not form its name the expected way.",
+                     first_unnamed);
+            return false;
+        }
+        if (found && strcmp(name, out->mount_name)) {
+            snprintf(err, errn, "The game mounts its RomFS under two names (%s, %s).", out->mount_name, name);
+            return false;
+        }
+        snprintf(out->mount_name, sizeof(out->mount_name), "%s", name);
+        found += unnamed;
     }
     if (!found) {
         snprintf(err, errn, "The game never calls nn::fs::MountRom.");
@@ -297,6 +349,14 @@ static void msub_w(Asm *a, int d, int n, int m, int ra) { emit(a, 0x1B008000u | 
 static void strb_post(Asm *a, int t, int n, int imm) { emit(a, 0x38000400u | (uint32_t)(imm & 0x1FF) << 12 | (uint32_t)n << 5 | (uint32_t)t); }
 static void ldr_w_index(Asm *a, int t, int n, int m) { emit(a, 0xB8605800u | (uint32_t)m << 16 | (uint32_t)n << 5 | (uint32_t)t); }
 static void str_w_index(Asm *a, int t, int n, int m) { emit(a, 0xB8205800u | (uint32_t)m << 16 | (uint32_t)n << 5 | (uint32_t)t); }
+// ldrh wt, [xn, wm, uxtw #1]
+static void ldrh_w_index(Asm *a, int t, int n, int m) { emit(a, 0x78605800u | (uint32_t)m << 16 | (uint32_t)n << 5 | (uint32_t)t); }
+// adrp xd, the page of `target` (a module offset, as a->base is)
+static void adrp_to(Asm *a, int d, uint32_t target) {
+    uint32_t at = a->base + 4 * (uint32_t)a->n;
+    int64_t pages = ((int64_t)(target & ~0xFFFu) - (int64_t)(at & ~0xFFFu)) / 4096;
+    emit(a, 0x90000000u | (uint32_t)(pages & 3) << 29 | (uint32_t)((pages >> 2) & 0x7FFFF) << 5 | (uint32_t)d);
+}
 
 static bool finish(Asm *a) {
     if (a->overflow) return false;
@@ -471,6 +531,42 @@ static bool build_bodies(const AocSites *s, const int *indices, int count, Bodie
     branch_to(&a, F_B, L_OUT, 0, 0);
     label(&a, L_TEMPLATE);
     ok = ok && put(b, AOC_MOUNT, &a, template, PATH_ROOM);
+
+    // Many add-ons: the table no longer fits in ListAddOnContent's own room (Smash Ultimate's is 132 bytes, about
+    // 19 entries), so it goes, as 16-bit numbers, behind the mount body (or the query body), and the list code
+    // reaches it with adrp + add (those functions can be over 1 MiB away).
+    if (ok && b->size[AOC_LIST] > s->room[AOC_LIST]) {
+        int host = b->size[AOC_MOUNT] + 2 * (size_t)count <= s->room[AOC_MOUNT] ? AOC_MOUNT : AOC_QUERY;
+        if (b->size[host] + 2 * (size_t)count > s->room[host] || b->size[host] + 2 * (size_t)count > sizeof(b->blob[host])) {
+            snprintf(err, errn, "%d add-on contents are more than this game's sdk has room for.", count);
+            return false;
+        }
+        uint32_t where = s->target[host] + (uint32_t)b->size[host];
+        for (int i = 0; i < count; i++) {
+            b->blob[host][b->size[host]++] = (uint8_t)indices[i];
+            b->blob[host][b->size[host]++] = (uint8_t)(indices[i] >> 8);
+        }
+        b->size[host] = (b->size[host] + 3) & ~(size_t)3;   // the room is whole instructions
+        asm_init(&a, s->target[AOC_LIST]);
+        mov_x(&a, 12, 0);
+        movz_w(&a, 0, 0, 0);
+        branch_to(&a, F_TBNZ31, L_DONE, 0, 1);
+        adrp_to(&a, 9, where);
+        add_x(&a, 9, 9, (int)(where & 0xFFF));
+        label(&a, L_NEXT);
+        cmp_w_imm(&a, 1, count);
+        branch_to(&a, F_BGE, L_DONE, 0, 0);
+        cmp_w(&a, 0, 2);
+        branch_to(&a, F_BGE, L_DONE, 0, 0);
+        ldrh_w_index(&a, 11, 9, 1);
+        str_w_index(&a, 11, 12, 0);
+        add_w(&a, 1, 1, 1);
+        add_w(&a, 0, 0, 1);
+        branch_to(&a, F_B, L_NEXT, 0, 0);
+        label(&a, L_DONE);
+        emit(&a, RET);
+        ok = put(b, AOC_LIST, &a, NULL, 0);
+    }
 
     if (!ok) snprintf(err, errn, "The new sdk code could not be assembled.");
     return ok;

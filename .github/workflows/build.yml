@@ -104,4 +104,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" seedswap.nro build.exe --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes "Put build.exe and seedswap.nro in one folder and run build.exe (Windows). It makes the SD card files and the Seedsow save. Without Windows: python3 build.py --nro seedswap.nro. Steps: INSTALL.md."
+          # A tag with a hyphen (v0.15.0-experimental) is a pre-release and never becomes Latest.
+          extra=() note=""
+          case "$GITHUB_REF_NAME" in *-*) extra=(--prerelease --latest=false)
+            note="Experimental: a test build, not yet run on a console. The latest release is the stable one. " ;; esac
+          gh release create "$GITHUB_REF_NAME" seedswap.nro build.exe "${extra[@]}" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes "${note}Put build.exe and seedswap.nro in one folder and run build.exe (Windows). It makes the SD card files and the Seedsow save. Without Windows: python3 build.py --nro seedswap.nro. Steps: INSTALL.md."

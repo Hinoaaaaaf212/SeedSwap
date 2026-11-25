@@ -16,7 +16,7 @@
 
 #define AOC_DIRECTORY "__aoc"
 #define AOC_MAX_INDEX 9999
-#define AOC_MAX_ADD_ONS 16
+#define AOC_MAX_ADD_ONS 100
 #define AOC_NOT_FOUND 0x7D402u     // nn::fs::ResultTargetNotFound
 
 enum { AOC_COUNT, AOC_LIST, AOC_QUERY, AOC_MOUNT, AOC_TARGETS };
@@ -30,6 +30,10 @@ typedef struct {
 
 // Whether main asks for add-on content at all (imports one of the four functions).
 bool aoc_main_uses(const NsoImage *main);
+// Whether a module imports a function that mounts add-on content (MountAddOnContent,
+// QueryMountAddOnContentCacheSize); true when its symbols cannot be read. A game none of whose
+// modules (sdk aside) does never opens a pack's files: Super Smash Bros. Ultimate only counts and lists.
+bool aoc_module_mounts(const NsoImage *nso);
 // Finds everything in the game's sdk and main. False with a sentence in err when the game does not fit.
 bool aoc_locate(const NsoImage *sdk, const NsoImage *main, AocSites *out, char *err, size_t errn);
 // Writes the four bodies into sdk->image (text). Returns the number of changed instructions, or -1.

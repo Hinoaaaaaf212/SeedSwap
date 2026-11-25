@@ -8,11 +8,11 @@
 -- fixups are flat triples {offset, kind, addend}: u64 at offset := value[kind] + addend
 return {
   format = 1,
-  generated = "2026-11-23T23:35:33.493Z",
+  generated = "2026-11-25T22:14:24.957Z",
   builder = "semi-untethered-port/tools/build_install_image.cjs",
   modloader = {
-    templates_sha256 = "5e4280252a16be4e2a837adb206bde476c4ef4d184bed09c1f451feff7abf61f",
-    runtime_bytes = 104632,
+    templates_sha256 = "51c696cefdcbe1b9a7ac28da236ce698e3d4581eb9133b8f7f2fb756f9966246",
+    runtime_bytes = 105480,
   },
   plan = {
     origin = "SD listing",
@@ -72,6 +72,14 @@ return {
     file_ref_offset = 32,
   },
   fingerprint = {
+    {
+      191960,
+      "a0020036e8fb45b91f05007141250054",
+    },
+    {
+      193248,
+      "fa340036e003119102258052e1031f2a",
+    },
     {
       309440,
       "08a00091290080520801e9b81f050031",
@@ -236,14 +244,14 @@ return {
     file = "runtime.bin",
     bytes = 106496,
     pages = 26,
-    sha256 = "e3317bd2c28a46593953f8ad9b150bdb27f844f948c9c8a00eec7d2ca7811605",
-    adler32 = 1599598881,
+    sha256 = "7aefb95f8699927d6e373f01d2683452eff78d4a524ec701f69839bd5f1a2200",
+    adler32 = 2324190504,
     expected_va = 134217728,
     entry = {
-      lfs_initialize = 10720,
-      lfs_activate = 12932,
+      lfs_initialize = 11372,
+      lfs_activate = 13584,
       lfs_zero = 48,
-      lfs_trace_clock_probe = 17684,
+      lfs_trace_clock_probe = 18336,
     },
     fixup_counts = {
       base = 3,
@@ -255,7 +263,7 @@ return {
       trace = 0,
       pidfloor = 0,
     },
-    fixups = {47440, 2, 0, 47448, 2, 368, 47456, 2, 480, 47464, 1, 2413024, 47472, 1, 2197456, 47480, 1, 2197616},
+    fixups = {48096, 2, 0, 48104, 2, 368, 48112, 2, 480, 48120, 1, 2413024, 48128, 1, 2197456, 48136, 1, 2197616},
   },
   gateway = {
     file = "gateway.bin",
@@ -272,13 +280,13 @@ return {
       trace = 0,
       pidfloor = 0,
     },
-    fixups = {8, 3, 47368, 24, 3, 47376, 40, 3, 47384, 56, 3, 47396, 72, 3, 47408, 88, 3, 47420, 104, 3, 3932, 120, 3, 4256, 296, 3, 7560, 344, 3, 8344, 392, 3, 1076, 440, 3, 1040, 488, 3, 1112, 536, 3, 8496, 584, 3, 8928, 632, 3, 1148, 680, 3, 26472, 728, 3, 26832, 776, 3, 27104, 824, 3, 27572, 872, 3, 28144},
+    fixups = {8, 3, 48024, 24, 3, 48032, 40, 3, 48040, 56, 3, 48052, 72, 3, 48064, 88, 3, 48076, 104, 3, 3932, 120, 3, 4256, 296, 3, 8212, 344, 3, 8996, 392, 3, 1076, 440, 3, 1040, 488, 3, 1112, 536, 3, 9148, 584, 3, 9580, 632, 3, 1148, 680, 3, 27124, 728, 3, 27484, 776, 3, 27756, 824, 3, 28224, 872, 3, 28796},
   },
   context = {
     file = "context.bin",
     bytes = 77824,
-    sha256 = "5619d4b1b8d98d3294d5d6c6fc3d13579dfe5ee5ed6615d07bee388ac41ac4e0",
-    adler32 = 2681391510,
+    sha256 = "961cd381ed4a501a8bec91d62118cd2c7699bca310faa3452e6fc903bf80b308",
+    adler32 = 1649068339,
     alloc = "heap",
     magic = "NS2LFS02",
     enabled_offset = 8,
@@ -422,6 +430,31 @@ return {
       off = 969600,
       orig = "7f2303d5ff0301d1fd7b01a9f65702a9",
       repl = "5f2403d5378205141f2003d51f2003d5",
+    },
+    {
+      name = "Sig.Header1",
+      off = 191960,
+      orig = "a0020036e8fb45b91f05007141250054",
+      repl = "1f2003d5e8fb45b91f05007141250054",
+    },
+    {
+      name = "Sig.Header2",
+      off = 193248,
+      orig = "fa340036e003119102258052e1031f2a",
+      repl = "1f2003d5e003119102258052e1031f2a",
+    },
+  },
+  sig_patch = {
+    result = 2313218,
+    sites = {
+      {
+        name = "Sig.Header1",
+        off = 191960,
+      },
+      {
+        name = "Sig.Header2",
+        off = 193248,
+      },
     },
   },
   files = {

@@ -11,6 +11,8 @@
 #include "dlcpkg.h"
 #include "dumpcheck.h"
 
+_Static_assert(DLC_IDS_TEXT > 17 * AOC_MAX_ADD_ONS, "game.ini dlc holds AOC_MAX_ADD_ONS IDs");
+
 #define CHUNK (1024 * 1024)
 #define HEADER_MAX 0x8000
 
@@ -98,6 +100,46 @@ static bool load_entry(VfsFile *f, const Image *x, const char *name, uint8_t **d
             return *data && read_at(f, (int64_t)x->entries[i].offset, *data, *size);
         }
     return false;
+}
+
+// Whether a module of the game image (sdk and rtld aside) mounts add-on content: 1 yes, 0 never, -1 not
+// known. A game that never does only counts and lists its add-ons (Super Smash Bros. Ultimate: unlocks),
+// so the files in a pack do not matter to it.
+static int image_mounts_add_ons(const char *exefs) {
+    Image *x = calloc(1, sizeof(Image));
+    VfsFile *f = vfs_open(VFS_SD, exefs, false);
+    int verdict = -1, modules = 0;
+    if (!x || !f) goto out;
+    x->size = vfs_size(f);
+    size_t want = x->size < HEADER_MAX ? (size_t)x->size : HEADER_MAX;
+    if (x->size < 0x10 || !read_at(f, 0, x->header, want) ||
+        (x->count = pfs0_parse(x->header, want, (uint64_t)x->size, x->entries, 64, &x->header_size)) < 0)
+        goto out;
+    verdict = 0;
+    for (int i = 0; i < x->count && verdict == 0; i++) {
+        const char *n = x->entries[i].name;
+        if (!strcmp(n, "sdk") || !strcmp(n, "rtld")) continue;
+        uint8_t *data = NULL;
+        size_t size = 0;
+        int index;
+        NsoImage nso = {0};
+        char why[100];
+        if (!load_entry(f, x, n, &data, &size, &index)) verdict = -1;
+        else if (size >= 4 && !memcmp(data, "NSO0", 4)) {  // main.npdm and the like are not code
+            if (nso_load(data, size, &nso, why, sizeof(why))) verdict = -1;
+            else {
+                modules++;
+                if (aoc_module_mounts(&nso)) verdict = 1;
+            }
+        }
+        nso_free(&nso);
+        free(data);
+    }
+    if (verdict == 0 && !modules) verdict = -1;
+out:
+    if (f) vfs_close(f);
+    free(x);
+    return verdict;
 }
 
 static bool patch_image(const char *src, const char *part, const int *indices, int count, uint8_t digest[32],
@@ -291,17 +333,35 @@ static bool sha_region(VfsFile *f, int64_t off, int64_t size, uint8_t out[32]) {
     return ok;
 }
 
-bool dlc_add(const char *nsp_path, const char *keys_path, const char *folder, const char *game_dir, uint64_t program_id,
-             int64_t version_code, const char *const *siblings, int nsiblings, ProgressFn cb, DlcResult *out, char *err,
-             size_t errn) {
+// One add-on dump to build in (dlc_add_set).
+typedef struct {
+    DlcPackage pkg;
+    int index;
+    char name[96], file[16];
+    bool take;
+} NewPack;
+
+// Adds a sentence about a dump that is left out to out->skipped.
+static void skip_note(DlcResult *out, const char *text) {
+    size_t at = strlen(out->skipped);
+    if (at + 8 < sizeof(out->skipped)) snprintf(out->skipped + at, sizeof(out->skipped) - at, "%s%s", at ? " " : "", text);
+    app_log("DLC: left out: %s", text);
+}
+
+// strict (one dump, dlc_add): any problem stops with its sentence. Otherwise (dlc_add_many) a dump that
+// cannot go in is left out with a sentence in out->skipped, and the others go in together.
+static bool dlc_add_set(const char *const *paths, int npaths, bool strict, const char *keys_path, const char *folder,
+                        const char *game_dir, uint64_t program_id, int64_t version_code, const char *const *siblings,
+                        int nsiblings, ProgressFn cb, DlcResult *out, char *err, size_t errn) {
     memset(out, 0, sizeof(*out));
     bool ok = false, header_written = false;
     char *keys = NULL, *ini = NULL;
-    DlcPackage pkg = {0};
+    NewPack *np = calloc(npaths > 0 ? (size_t)npaths : 1, sizeof(NewPack));
     Built built[AOC_MAX_ADD_ONS];
-    int nbuilt = 0;
+    int nbuilt = 0, nnew = 0;
     RomfsPlan plan = {0};
     VfsFile *rf = NULL;
+    const uint64_t base_id = (program_id & ~0xFFFull) + 0x1000;
     char exefs[300], romfs[300], ini_path[300], part[300], nocompat[300], nocompat_part[300], kept[300], hex[200];
     snprintf(exefs, sizeof(exefs), "%s/exefs.nsp", folder);
     snprintf(romfs, sizeof(romfs), "%s/romfs.bin", folder);
@@ -311,52 +371,84 @@ bool dlc_add(const char *nsp_path, const char *keys_path, const char *folder, co
     snprintf(nocompat_part, sizeof(nocompat_part), "%s/" COMPAT_ORIGINAL ".part", game_dir);
     snprintf(kept, sizeof(kept), "%s/" DLC_KEPT_IMAGE, game_dir);
     uint8_t old_header[0x50], base_header[0x50];
+    if (!np || npaths < 1) { snprintf(err, errn, "No add-on content was given."); goto out; }
 
-    // 1. the dump
+    // 1. the dumps, and what is built in already
     if (cb) cb(0.01f, "Reading the add-on content…");
     keys = read_text(VFS_SD, keys_path, 256 * 1024);
     if (!keys) { snprintf(err, errn, "The keys file %s could not be read.", keys_path); goto out; }
-    VfsFile *nf = vfs_open(VFS_SD, nsp_path, false);
-    if (!nf) { snprintf(err, errn, "%s could not be opened.", nsp_path); goto out; }
-    bool read_ok = dlcpkg_read(vfs_cb, nf, (uint64_t)vfs_size(nf), keys, &pkg, err, errn);
-    vfs_close(nf);
-    if (!read_ok) goto out;
-    snprintf(out->title_id, sizeof(out->title_id), "%016llx", (unsigned long long)pkg.title_id);
-    out->index = (int)((int64_t)pkg.title_id - (int64_t)(pkg.application_id + 0x1000));
-    out->version = pkg.version;
-    out->required_version = pkg.required_version;
-    const char *known = dlc_known_name(pkg.title_id);
-    if (known[0]) snprintf(out->name, sizeof(out->name), "%s", known);
-    else snprintf(out->name, sizeof(out->name), "add-on content %d", out->index);
-    if (pkg.application_id != (program_id & ~0xFFFull)) {
-        snprintf(err, errn, "This add-on content is for the game %016llx, not for this one (%016llx).",
-                 (unsigned long long)pkg.application_id, (unsigned long long)program_id);
-        goto out;
-    }
-    if (out->index < 0 || out->index > AOC_MAX_INDEX) {
-        snprintf(err, errn, "The add-on content's ID %s is not one of this game's add-on content IDs.", out->title_id);
-        goto out;
-    }
-    if (version_code >= 0 && pkg.required_version > version_code) {
-        snprintf(err, errn, "%s needs version %u or later of the game; the library holds version %lld. Update the game "
-                 "first (prepare_game.py with the update, or the console converter once it handles updates).",
-                 out->name, pkg.required_version, (long long)version_code);
-        goto out;
-    }
-
-    // 2. what is built in already
     ini = read_text(VFS_SD, ini_path, 16384);
     if (!ini) ini = strdup("");
-    char list[200] = "", base_hex[200] = "", signed_list[200] = "";
+    char list[DLC_IDS_TEXT] = "", base_hex[200] = "", signed_list[DLC_IDS_TEXT] = "";
     ini_get(ini, "dlc", list, sizeof(list));
     bool signed_known = ini_get(ini, "dlc_signed", signed_list, sizeof(signed_list));
-    uint64_t ids[AOC_MAX_ADD_ONS];
-    int nids = parse_ids(list, ids, AOC_MAX_ADD_ONS - 1);
-    for (int i = 0; i < nids; i++)
-        if (ids[i] == pkg.title_id) {
-            snprintf(err, errn, "%s is already built into this game.", out->name);
-            goto out;
+    uint64_t ids[AOC_MAX_ADD_ONS + 1];
+    int nids = parse_ids(list, ids, AOC_MAX_ADD_ONS + 1);
+    for (int k = 0; k < npaths; k++) {
+        NewPack *p = &np[k];
+        char e[400] = "";
+        const char *base = strrchr(paths[k], '/');
+        snprintf(p->name, sizeof(p->name), "%s", base ? base + 1 : paths[k]);
+        if (cb && npaths > 1) cb(0.01f + 0.02f * (float)k / (float)npaths, "Reading the add-on content…");
+        VfsFile *nf = vfs_open(VFS_SD, paths[k], false);
+        if (!nf) snprintf(e, sizeof(e), "%s could not be opened.", paths[k]);
+        else {
+            char why[300];
+            bool read_ok = dlcpkg_read(vfs_cb, nf, (uint64_t)vfs_size(nf), keys, &p->pkg, why, sizeof(why));
+            vfs_close(nf);
+            if (!read_ok) {
+                if (strict) snprintf(e, sizeof(e), "%s", why);
+                else snprintf(e, sizeof(e), "%s: %s", p->name, why);
+            }
         }
+        if (!e[0]) {
+            DlcPackage *pkg = &p->pkg;
+            p->index = (int)((int64_t)pkg->title_id - (int64_t)(pkg->application_id + 0x1000));
+            const char *known = dlc_known_name(pkg->title_id);
+            if (known[0]) snprintf(p->name, sizeof(p->name), "%s", known);
+            else snprintf(p->name, sizeof(p->name), "add-on content %d", p->index);
+            if (strict) {
+                snprintf(out->title_id, sizeof(out->title_id), "%016llx", (unsigned long long)pkg->title_id);
+                out->index = p->index;
+                out->version = pkg->version;
+                out->required_version = pkg->required_version;
+                snprintf(out->name, sizeof(out->name), "%s", p->name);
+            }
+            bool twice = false;
+            for (int j = 0; j < k; j++) twice |= np[j].take && np[j].pkg.title_id == pkg->title_id;
+            bool in = false;
+            for (int i = 0; i < nids; i++) in |= ids[i] == pkg->title_id;
+            if (pkg->application_id != (program_id & ~0xFFFull))
+                snprintf(e, sizeof(e), "This add-on content is for the game %016llx, not for this one (%016llx).",
+                         (unsigned long long)pkg->application_id, (unsigned long long)program_id);
+            else if (p->index < 0 || p->index > AOC_MAX_INDEX)
+                snprintf(e, sizeof(e), "The add-on content's ID %016llx is not one of this game's add-on content IDs.",
+                         (unsigned long long)pkg->title_id);
+            else if (version_code >= 0 && pkg->required_version > version_code)
+                snprintf(e, sizeof(e), "%s needs version %u or later of the game; the library holds version %lld. "
+                         "Update the game first (prepare_game.py with the update, or the console converter once it "
+                         "handles updates).", p->name, pkg->required_version, (long long)version_code);
+            else if (in) snprintf(e, sizeof(e), "%s is already built into this game.", p->name);
+            else if (twice) snprintf(e, sizeof(e), "%s is on the card twice; it goes in once.", p->name);
+        }
+        if (e[0]) {
+            if (strict) { snprintf(err, errn, "%s", e); goto out; }
+            skip_note(out, e);
+            continue;
+        }
+        p->take = true;
+        nnew++;
+    }
+    if (nnew && nids + nnew > AOC_MAX_ADD_ONS) {
+        if (strict) snprintf(err, errn, "This game has %d add-ons built in, the most SeedSwap can add.", nids);
+        else snprintf(err, errn, "That would make %d add-ons; the most SeedSwap can add is %d.", nids + nnew,
+                      AOC_MAX_ADD_ONS);
+        goto out;
+    }
+    if (!nnew) {
+        snprintf(err, errn, "None of them could be added. %s", out->skipped);
+        goto out;
+    }
     rf = vfs_open(VFS_SD, romfs, true);
     int64_t romfs_size = rf ? vfs_size(rf) : -1;
     if (!rf || romfs_size < 0x50 || !read_at(rf, 0, old_header, 0x50)) {
@@ -372,7 +464,7 @@ bool dlc_add(const char *nsp_path, const char *keys_path, const char *folder, co
         }
         for (int i = 0; i < nids; i++) {
             Built *b = &built[nbuilt];
-            b->index = (int)((int64_t)ids[i] - (int64_t)(pkg.application_id + 0x1000));
+            b->index = (int)((int64_t)ids[i] - (int64_t)base_id);
             aoc_image_name(b->index, b->name);
             char path[64];
             snprintf(path, sizeof(path), "/" AOC_DIRECTORY "/%s", b->name);
@@ -392,31 +484,69 @@ bool dlc_add(const char *nsp_path, const char *keys_path, const char *folder, co
     }
     // a dump that is not an original: refused when it lacks what the game's original packs hold
     {
-        if (cb) cb(0.03f, "Checking that the dump is an original…");
-        char msg[sizeof(out->warning)];
-        DlcVerdict v = judge_new(&pkg, out->name, built, nbuilt, siblings, nsiblings, nsp_path, keys, msg, sizeof(msg));
-        if (v == DLC_REFUSE) {
-            snprintf(err, errn, "%s", msg);
-            goto out;
+        if (cb) cb(0.03f, "Checking that the dumps are originals…");
+        int mounts = -2, warned = 0;
+        char first_warning[sizeof(out->warning)] = "";
+        for (int k = 0; k < npaths; k++) {
+            NewPack *p = &np[k];
+            if (!p->take) continue;
+            char msg[sizeof(out->warning)];
+            DlcVerdict v = judge_new(&p->pkg, p->name, built, nbuilt, siblings, nsiblings, paths[k], keys, msg,
+                                     sizeof(msg));
+            if (v == DLC_REFUSE && mounts == -2) mounts = image_mounts_add_ons(exefs);
+            if (v == DLC_REFUSE && mounts == 0) {  // its files are never opened
+                app_log("DLC: let in, as this game never opens add-on files; the dump check said: %s", msg);
+                snprintf(msg, sizeof(msg), "%s isn't signed by Nintendo. This game never opens add-on files, so it "
+                         "was added anyway.", p->name);
+                v = DLC_WARN;
+            }
+            if (v == DLC_REFUSE) {
+                if (strict) { snprintf(err, errn, "%s", msg); goto out; }
+                skip_note(out, msg);
+                p->take = false;
+                nnew--;
+                continue;
+            }
+            if (v == DLC_WARN) {
+                if (!warned++) snprintf(first_warning, sizeof(first_warning), "%s", msg);
+                app_log("DLC: %s", msg);
+            }
         }
-        if (v == DLC_WARN) {
-            snprintf(out->warning, sizeof(out->warning), "%s", msg);
-            app_log("DLC: %s", msg);
+        if (warned == 1) snprintf(out->warning, sizeof(out->warning), "%s", first_warning);
+        else if (warned > 1)
+            snprintf(out->warning, sizeof(out->warning), "%d of them aren't signed by Nintendo, so they may be rebuilt "
+                     "dumps. If the game crashes, remove the DLC again.", warned);
+        if (!nnew) {
+            snprintf(err, errn, "None of them could be added. %s", out->skipped);
+            goto out;
         }
     }
     memset(keys, 0, strlen(keys));
     out->first = nids == 0;
+    out->added = nnew;
+    if (!strict) {
+        for (int k = 0; k < npaths; k++)
+            if (np[k].take) {
+                if (nnew == 1) snprintf(out->name, sizeof(out->name), "%s", np[k].name);
+                snprintf(out->title_id, sizeof(out->title_id), "%016llx", (unsigned long long)np[k].pkg.title_id);
+                out->index = np[k].index;
+                break;
+            }
+        if (nnew > 1) snprintf(out->name, sizeof(out->name), "%d add-ons", nnew);
+    }
     int indices[AOC_MAX_ADD_ONS];
     RomfsNewFile files[AOC_MAX_ADD_ONS];
     for (int i = 0; i < nbuilt; i++) {
         indices[i] = built[i].index;
         files[i] = (RomfsNewFile){built[i].name, built[i].image, built[i].size};
     }
-    char new_name[16];
-    aoc_image_name(out->index, new_name);
-    indices[nbuilt] = out->index;
-    files[nbuilt] = (RomfsNewFile){new_name, pkg.image, pkg.image_size};
-    int count = nbuilt + 1;
+    int count = nbuilt;
+    for (int k = 0; k < npaths; k++) {
+        if (!np[k].take) continue;
+        aoc_image_name(np[k].index, np[k].file);
+        indices[count] = np[k].index;
+        files[count++] = (RomfsNewFile){np[k].file, np[k].pkg.image, np[k].pkg.image_size};
+    }
     // sort by index, as the PC tools do
     for (int i = 1; i < count; i++)
         for (int j = i; j > 0 && indices[j] < indices[j - 1]; j--) {
@@ -514,23 +644,33 @@ bool dlc_add(const char *nsp_path, const char *keys_path, const char *folder, co
 
     // 7. game.ini
     {
-        char ids_text[200] = "", names[200] = "", v[64];
+        char ids_text[DLC_IDS_TEXT] = "", names[DLC_NAMES_TEXT] = "", v[64];
+        bool names_full = false;
         for (int i = 0; i < count; i++) {
-            uint64_t id = pkg.application_id + 0x1000 + (uint64_t)indices[i];
+            uint64_t id = base_id + (uint64_t)indices[i];
             const char *n = dlc_known_name(id);
-            char fallback[40];
+            char fallback[40], item[160];
             snprintf(fallback, sizeof(fallback), "add-on content %d", indices[i]);
             snprintf(ids_text + strlen(ids_text), sizeof(ids_text) - strlen(ids_text), "%s%016llx", i ? "," : "",
                      (unsigned long long)id);
-            snprintf(names + strlen(names), sizeof(names) - strlen(names), "%s%s", i ? ", " : "", n[0] ? n : fallback);
+            if (names_full) continue;
+            size_t at = strlen(names);
+            snprintf(item, sizeof(item), "%s%s", i ? ", " : "", n[0] ? n : fallback);
+            if (at + strlen(item) + 24 >= sizeof(names)) {  // the rest as a number
+                snprintf(names + at, sizeof(names) - at, " and %d more", count - i);
+                names_full = true;
+            } else snprintf(names + at, sizeof(names) - at, "%s", item);
         }
         ini_set(&ini, "dlc", ids_text);
         ini_set(&ini, "dlc_names", names);
         // which of them are original dumps (signed by Nintendo), for the next one's check
-        char signed_ids[200] = "";
+        char signed_ids[DLC_IDS_TEXT] = "";
         for (int i = 0; i < count; i++) {
-            uint64_t id = pkg.application_id + 0x1000 + (uint64_t)indices[i];
-            bool s = id == pkg.title_id ? pkg.is_signed : signed_known && id_listed(signed_list, id);
+            uint64_t id = base_id + (uint64_t)indices[i];
+            int fresh = -1;  // one of the new ones
+            for (int k = 0; k < npaths; k++)
+                if (np[k].take && np[k].pkg.title_id == id) fresh = k;
+            bool s = fresh >= 0 ? np[fresh].pkg.is_signed : signed_known && id_listed(signed_list, id);
             if (s)
                 snprintf(signed_ids + strlen(signed_ids), sizeof(signed_ids) - strlen(signed_ids), "%s%016llx",
                          signed_ids[0] ? "," : "", (unsigned long long)id);
@@ -550,8 +690,13 @@ bool dlc_add(const char *nsp_path, const char *keys_path, const char *folder, co
         ini_set(&ini, "exefs_sha256", hex);
         if (!write_text(VFS_SD, ini_path, ini)) app_log("DLC: game.ini could not be written");
     }
-    app_log("DLC: %s (%s, number %d) built into %016llx: %d sdk instructions, %lld bytes appended to romfs.bin",
-            out->name, out->title_id, out->index, (unsigned long long)program_id, out->changed, (long long)out->tail_bytes);
+    if (nnew == 1)
+        app_log("DLC: %s (%s, number %d) built into %016llx: %d sdk instructions, %lld bytes appended to romfs.bin",
+                out->name, out->title_id, out->index, (unsigned long long)program_id, out->changed,
+                (long long)out->tail_bytes);
+    else
+        app_log("DLC: %d add-ons built into %016llx together (%d in all): %d sdk instructions, %lld bytes appended to "
+                "romfs.bin", nnew, (unsigned long long)program_id, count, out->changed, (long long)out->tail_bytes);
     if (cb) cb(1.f, "Done");
     ok = true;
     goto out;
@@ -567,7 +712,8 @@ out:
     if (rf) vfs_close(rf);
     for (int i = 0; i < nbuilt; i++) free(built[i].image);
     romfs_plan_free(&plan);
-    dlcpkg_free(&pkg);
+    for (int k = 0; np && k < npaths; k++) dlcpkg_free(&np[k].pkg);
+    free(np);
     if (keys) {
         memset(keys, 0, strlen(keys));
         free(keys);
@@ -575,6 +721,20 @@ out:
     free(ini);
     if (!ok) app_log("DLC: not built in: %s", err);
     return ok;
+}
+
+bool dlc_add(const char *nsp_path, const char *keys_path, const char *folder, const char *game_dir, uint64_t program_id,
+             int64_t version_code, const char *const *siblings, int nsiblings, ProgressFn cb, DlcResult *out, char *err,
+             size_t errn) {
+    return dlc_add_set(&nsp_path, 1, true, keys_path, folder, game_dir, program_id, version_code, siblings, nsiblings, cb,
+                       out, err, errn);
+}
+
+bool dlc_add_many(const char *const *nsp_paths, int npaths, const char *keys_path, const char *folder,
+                  const char *game_dir, uint64_t program_id, int64_t version_code, const char *const *siblings,
+                  int nsiblings, ProgressFn cb, DlcResult *out, char *err, size_t errn) {
+    return dlc_add_set(nsp_paths, npaths, false, keys_path, folder, game_dir, program_id, version_code, siblings,
+                       nsiblings, cb, out, err, errn);
 }
 
 bool dlc_remove(const char *folder, const char *game_dir, char *err, size_t errn) {

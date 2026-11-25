@@ -41,6 +41,10 @@
 // Live SD sizes (default on; --no-live-sizes): the runtime mounts romfs.bin/exefs.nsp at their
 // size on SD at each launch and leaves the game native when they are missing; image.lua carries
 // `live_sizes = true` and s2_ml's stale-file check only reports sizes.
+// Signature patch (--sig-patch, default off): two more 16-byte hooks (`Sig.Header1`, `Sig.Header2`)
+// make FS's NCA header fixed-key signature failure branch a nop, so games installed for HOME with
+// plain keys open (tools/fs-sig-profile.json; RAM only, until restart). Their bytes come from the
+// full FS dump like the guard's and are fingerprinted whole.
 'use strict';
 const fs = require('node:fs');
 const os = require('node:os');
@@ -61,7 +65,8 @@ function args(argv) {
   const o = {ml: path.resolve(HERE, '../../tools/ns2jb-modloader-source'), titles: [], checks: [],
     out: path.resolve(HERE, '../sd/kaihen/ml/install'), logs: true, trace: true,
     guard: true, guardProgram: GUARD_PROGRAM, guardUser: GUARD_USER, liveSizes: true,
-    guardProfile: path.join(HERE, 'fs-guard-profile.json')};
+    guardProfile: path.join(HERE, 'fs-guard-profile.json'),
+    sigPatch: false, sigProfile: path.join(HERE, 'fs-sig-profile.json')};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i], v = () => { const x = argv[++i]; check(x !== undefined, 'missing value after ' + a); return x; };
     if (a === '--ml') o.ml = path.resolve(v());
@@ -82,6 +87,8 @@ function args(argv) {
     else if (a === '--guard-profile') o.guardProfile = path.resolve(v());
     else if (a === '--full-capture') o.fullCapture = path.resolve(v());
     else if (a === '--no-live-sizes') o.liveSizes = false;
+    else if (a === '--sig-patch') o.sigPatch = true;
+    else if (a === '--sig-profile') o.sigProfile = path.resolve(v());
     else throw Error('unknown option ' + a);
   }
   check([o.plan, o.tree, o.sdRoot].filter(Boolean).length === 1, 'give exactly one of --plan, --tree, --sd-root');
@@ -114,6 +121,25 @@ function guardCapture(o, capture) {
     ranges.push({name: r.name, off: r.offset, bytes: r.size, sha256: r.sha256});
   }
   return {capture: out, ranges, nonzero, refuse: profile.refuse_result};
+}
+
+// ---------- signature patch sites ----------
+// Two 16-byte hooks from the full dump: the first word (tbz to the 2002-4518 path) becomes a nop.
+const NOP = '1f2003d5';
+function sigSites(o, capture) {
+  const profile = JSON.parse(fs.readFileSync(o.sigProfile, 'utf8'));
+  check(profile.schema === 1 && profile.sites.length === 2, 'unexpected signature profile ' + o.sigProfile);
+  check(sha(capture) === profile.capture_sha256, 'the signature profile was made for capture ' + profile.capture_sha256.slice(0, 8) +
+    ', not ' + sha(capture).slice(0, 8));
+  const full = fs.readFileSync(o.fullCapture || path.resolve(path.dirname(o.sigProfile), profile.full_dump));
+  check(sha(full) === profile.full_dump_sha256 && full.length === capture.length, 'full FS dump differs from the signature profile');
+  return profile.sites.map(s => {
+    const bytes = full.subarray(s.offset, s.offset + 16);
+    check(bytes.toString('hex') === s.orig && sha(bytes) === s.sha256, s.name + ' bytes differ from the signature profile');
+    check(s.orig.startsWith(s.first_word) && (bytes.readUInt32LE(0) & 0x7f000000) === 0x36000000, s.name + ' does not start with tbz');
+    check(capture.subarray(s.offset, s.offset + 16).every((x, i) => x === 0 || x === bytes[i]), s.name + ' differs from captured bytes');
+    return {name: s.name, offset: s.offset, originalHex: s.orig, replacementHex: NOP + s.orig.slice(8)};
+  });
 }
 
 // ---------- plan ----------
@@ -322,6 +348,7 @@ async function main() {
   const {validateCapture} = require(path.join(ML, 'lib/native.cjs'));
   const validation = validateCapture(capture);
   const guard = o.guard ? guardCapture(o, capture) : null;
+  const sig = o.sigPatch ? sigSites(o, capture) : [];
   const fsLayout = validation.layout || null;
   const resolve = r => require(path.join(ML, 'lib/native/fs-layout.cjs')).offset(fsLayout, r);
   const {artifacts} = require(path.join(ML, 'lib/native/artifacts.cjs'));
@@ -416,13 +443,18 @@ async function main() {
     const replays = [];
     for (const dir of o.checks) replays.push(replay(dir, plan0, layout, templatesSha, parts, r0.native.hooks));
 
+    // Signature patch hooks go last (after the save guard), in the same {name, offset, bytes} form.
+    const hooks = [...r0.native.hooks, ...sig];
+    for (const s of sig) check(!r0.native.hooks.some(h => Math.abs(h.offset - s.offset) < 16), s.name + ' overlaps another hook');
+
     // Fingerprint: 16 bytes at every FS function the image depends on.
-    const refs = new Set([...r0.native.hooks.map(h => h.offset)]);
+    const refs = new Set([...hooks.map(h => h.offset)]);
     for (const r of [0x694c0, 0x69580, 0x215620, 0x215800, 0x2187d0, 0x218870, 0x121400, 0x24a7a0,
       0x1077b0, 0x107bc0, 0x107cd0, 0x1201b0, 0x4b8c0, 0x103390]) refs.add(resolve(r));
     // Guard functions come from the full dump: fingerprint them whole (s2_ml compares every byte).
     const whole = new Map((guard ? guard.ranges : []).map(r => [r.off, r.bytes]));
-    const code = guard ? guard.capture : capture;
+    const code = Buffer.from(guard ? guard.capture : capture);
+    for (const s of sig) Buffer.from(s.originalHex, 'hex').copy(code, s.offset);
     const fingerprint = [...refs].sort((a, b) => a - b).map(off => [off, code.subarray(off, off + (whole.get(off) || 16)).toString('hex')]);
     check(fingerprint.every(([off, hex]) => !/^(00)+$/.test(hex)), 'a fingerprinted FS function is not in the capture');
     if (guard) {
@@ -479,7 +511,8 @@ async function main() {
         adler32: adler32(parts.context.blob), alloc: 'heap', magic: 'NS2LFS02', enabled_offset: 8,
         romfs: layout.romfs, lazy: layout.lazyOffset,
         fixup_counts: counts('context'), fixups: flat(parts.context.fixups)},
-      hooks: r0.native.hooks.map(h => ({name: h.name, off: h.offset, orig: h.originalHex, repl: h.replacementHex})),
+      hooks: hooks.map(h => ({name: h.name, off: h.offset, orig: h.originalHex, repl: h.replacementHex})),
+      sig_patch: sig.length ? {result: 0x234c02, sites: sig.map(s => ({name: s.name, off: s.offset}))} : false,
       files: files.map(f => ({title: f.title, kind: f.kind, path: f.path, size: f.size})),
       live_sizes: o.liveSizes,
       guard: guard ? {program: o.guardProgram, user: o.guardUser, result: guard.refuse, pid_floor: 'helper RO pid (kind pidfloor)',
@@ -508,7 +541,7 @@ async function main() {
       console.log(`${part.padEnd(8)} ${String(parts[part].blob.length).padStart(6)} B, ${parts[part].fixups.length} fixups (` +
         KINDS.filter(k => c[k]).map(k => k + ' ' + c[k]).join(', ') + ')');
     }
-    console.log(`hooks    ${r0.native.hooks.length}; fingerprint ${fingerprint.length} rows; context alloc ${layout.bytes} B`);
+    console.log(`hooks    ${hooks.length}${sig.length ? ' (with ' + sig.map(s => s.name + '@0x' + s.offset.toString(16)).join(', ') + ')' : ''}; fingerprint ${fingerprint.length} rows; context alloc ${layout.bytes} B`);
     if (guard) console.log(`guard    ${guard.ranges.map(r => r.name + '@0x' + r.off.toString(16) + '/' + r.bytes).join(', ')} from the full dump ` +
       `(${guard.nonzero} captured bytes agree); program ${o.guardProgram}, allowed user ${o.guardUser}, floor = helper RO pid`);
     else console.log('guard    off');

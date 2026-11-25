@@ -6,7 +6,7 @@ $(error "Please set DEVKITPRO in your environment")
 endif
 
 TARGET := seedswap
-VERSION := 0.14.0
+VERSION := 0.15.0
 BUILD := build
 PREFIX := $(DEVKITPRO)/devkitA64/bin/aarch64-none-elf-
 include $(DEVKITPRO)/libounce/switch2_cpu.mk
@@ -23,7 +23,7 @@ all: $(TARGET).nro
 $(BUILD):
 	mkdir -p $@
 
-SOURCES := main ui model util gfx nsp plat_switch font_data compat_game crypto dlcpkg dumpcheck users aoc dlc_game ncz pkg stage fixes compat_words convert hosts
+SOURCES := main ui model util gfx nsp plat_switch font_data compat_game crypto dlcpkg dumpcheck users aoc dlc_game ncz pkg stage fixes compat_words convert hosts home
 COMPAT := a64 nsofile cmpt compat
 OBJS := $(addprefix $(BUILD)/,$(addsuffix .o,$(SOURCES))) $(addprefix $(BUILD)/compat_,$(addsuffix .o,$(COMPAT))) \
     $(BUILD)/stb_impl.o

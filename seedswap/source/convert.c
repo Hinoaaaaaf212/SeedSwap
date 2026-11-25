@@ -175,6 +175,7 @@ bool convert_plan(const Library *L, const char *base_path, const char *update_pa
         if (nca_open(d.base, progs[i].base_entry, &base, e2, sizeof(e2))) {
             bool up = c->with_update && nca_open(d.update, progs[i].patch_entry, &upd, e2, sizeof(e2));
             stage_romfs_size(&base, up ? &upd : NULL, &c->romfs_size, e2, sizeof(e2));
+            c->romfs_packed = stage_romfs_packed(&base, up ? &upd : NULL);
             if (up) nca_close(&upd);
             nca_close(&base);
         }
@@ -206,8 +207,9 @@ const char *convert_blocker(const Library *L, const ConvertPlan *plan, int progr
             return "This game is the active one, and the install image on the SD card is fixed to its file sizes. Switch "
                    "to another game first.";
     }
-    // room: the new game data and code image beside whatever is there
-    uint64_t need = c->romfs_size + STAGE_EXEFS_PAD + 64ull * 1024 * 1024;
+    // room: the new game data and code image beside whatever is there. Packed game data is staged as stored and
+    // then unpacked beside it, at least as large again (the exact size is checked once it is known).
+    uint64_t need = c->romfs_size * (c->romfs_packed ? 2 : 1) + STAGE_EXEFS_PAD + 64ull * 1024 * 1024;
     if (plan->sd_free >= 0 && (uint64_t)plan->sd_free < need) {
         snprintf(why, sizeof(why), "Not enough room on the SD card: the game needs %.2f GB while it is built, %.2f GB are "
                  "free.%s", (double)need / 1e9, (double)plan->sd_free / 1e9,
@@ -353,32 +355,52 @@ static void dlc_again(const char *old_ids, const char *keys_path, const char *fo
     if (!old_ids[0]) return;
     NspInfo *list = calloc(MAX_NSPS, sizeof(NspInfo));
     int n = list ? nsp_scan(list, MAX_NSPS) : 0;
-    char ids[200];
+    char ids[DLC_IDS_TEXT], added[sizeof(res->dlc)] = "", failed[sizeof(res->dlc)] = "";
+    int nadded = 0;
     snprintf(ids, sizeof(ids), "%s", old_ids);
     const char *siblings[MAX_NSPS];   // the game's DLC dumps on the card: compared with when one is not an original
     int nsib = 0;
     for (int i = 0; i < n; i++)
         if (list[i].kind == NSP_DLC && nsp_base_id(list[i].title_id) == (program_id & ~0xFFFull)) siblings[nsib++] = list[i].path;
+    const char *paths[MAX_NSPS];      // the dumps found again, built in together
+    int npaths = 0;
     for (char *tok = strtok(ids, ","); tok; tok = strtok(NULL, ",")) {
         uint64_t want = strtoull(tok, NULL, 16);
         int found = -1;
         for (int i = 0; i < n; i++)
             if (list[i].title_id == want && list[i].kind == NSP_DLC) found = i;
-        char line[200];
-        if (found < 0) {
-            snprintf(line, sizeof(line), "%s not added: its dump isn't on the SD card",
-                     dlc_known_name(want)[0] ? dlc_known_name(want) : tok);
-            append(res->dlc, sizeof(res->dlc), "; ", line);
+        if (found >= 0 && npaths < MAX_NSPS) {
+            paths[npaths++] = list[found].path;
             continue;
         }
-        DlcResult dr;
-        char e2[300];
-        if (dlc_add(list[found].path, keys_path, folder, gdir, program_id, version_code, siblings, nsib, NULL, &dr, e2,
-                    sizeof(e2)))
-            snprintf(line, sizeof(line), "%s added again%s", dr.name, dr.warning[0] ? " (not signed by Nintendo)" : "");
-        else snprintf(line, sizeof(line), "%s not added: %s", dlc_known_name(want)[0] ? dlc_known_name(want) : tok, e2);
-        append(res->dlc, sizeof(res->dlc), "; ", line);
+        char line[200];
+        snprintf(line, sizeof(line), "%s not added: its dump isn't on the SD card",
+                 dlc_known_name(want)[0] ? dlc_known_name(want) : tok);
+        append(failed, sizeof(failed), "; ", line);
     }
+    if (npaths) {
+        DlcResult dr;
+        char e2[900], line[300];
+        bool ok = npaths == 1 ? dlc_add(paths[0], keys_path, folder, gdir, program_id, version_code, siblings, nsib, NULL,
+                                        &dr, e2, sizeof(e2))
+                              : dlc_add_many(paths, npaths, keys_path, folder, gdir, program_id, version_code, siblings,
+                                             nsib, NULL, &dr, e2, sizeof(e2));
+        if (ok) {
+            nadded = dr.added;
+            snprintf(line, sizeof(line), "%s added again%s", dr.name,
+                     !dr.warning[0] ? "" : nadded > 1 ? " (not all signed by Nintendo)" : " (not signed by Nintendo)");
+            append(added, sizeof(added), "; ", line);
+            if (dr.skipped[0]) {
+                snprintf(line, sizeof(line), "left out: %s", dr.skipped);
+                append(failed, sizeof(failed), "; ", line);
+            }
+        } else {
+            snprintf(line, sizeof(line), "DLC not added: %s", e2);
+            append(failed, sizeof(failed), "; ", line);
+        }
+    }
+    snprintf(res->dlc, sizeof(res->dlc), "%s", added);
+    if (failed[0]) append(res->dlc, sizeof(res->dlc), "; ", failed);
     free(list);
 }
 
@@ -559,6 +581,8 @@ bool convert_run(Library *L, const ConvertPlan *plan, int program, bool allow_ol
     if (!stage_romfs(&base, have_patch ? &patch : NULL, part_romfs, scaled, &rr, err, errn)) goto done;
     app_log("convert %s: romfs.bin %llu bytes, %d levels checked, %s, %llu restarts of compressed reads", id,
             (unsigned long long)rr.size, rr.levels, rr.patched ? "base + update" : "base", (unsigned long long)rr.restarts);
+    if (rr.packed)
+        app_log("convert %s: game data stored packed (%llu bytes), unpacked", id, (unsigned long long)rr.packed_size);
     if (cb) cb(0.97f, "Writing the code image");
     if (!write_checked(part_exefs, image, stage_image_size(unpadded), err, errn)) {
         vfs_delete(VFS_SD, part_romfs);
@@ -578,7 +602,7 @@ bool convert_run(Library *L, const ConvertPlan *plan, int program, bool allow_ol
     }
     snprintf(path, sizeof(path), "%s/game.ini", gdir);
     old_ini = read_text(VFS_SD, path, 16384);
-    char old_dlc[200] = "";
+    char old_dlc[DLC_IDS_TEXT] = "";
     if (old_ini) ini_get(old_ini, "dlc", old_dlc, sizeof(old_dlc));
     snprintf(path, sizeof(path), "%s/romfs.bin", folder);
     if (!replace_file(part_romfs, path, err, errn)) goto done;

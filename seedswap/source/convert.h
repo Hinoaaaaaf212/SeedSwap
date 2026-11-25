@@ -25,6 +25,7 @@ typedef struct {
     char note[160];             // what is known about it ("needs JIT ...")
     bool with_update;
     uint64_t romfs_size;
+    bool romfs_packed;          // the game data is stored packed: romfs_size is the stored size, unpacked it is larger
     int library;                // the library entry of this program, -1 = new
     VersionRelation relation;   // to that entry's version
 } ConvertProgram;
