@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include "compat/a64.h"
 
@@ -201,6 +202,51 @@ static bool nrr_mount_name(const NsoImage *main, char *out, size_t n) {
     return have;
 }
 
+static bool word_char(uint8_t c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+}
+
+// The RomFS mount name from the game's strings, when the name passed to MountRom is a run-time value with
+// no .nrr paths (Final Fantasy X/X-2 HD keeps "rom" as a plain string, with "rom:/copyright/..." paths
+// beside it): a name that is both a string of its own ("\0rom\0") and the start of paths ("rom:/").
+// Names other mounts use are left out. True when exactly one is left.
+static bool path_mount_name(const NsoImage *main, char *out, size_t n) {
+    static const char *const OTHERS[] = {"save", "sd", "sdmc", "cache", "temp", "tmp", "bcat", "host", "aoc",
+                                         "addcont", "cont", "http", "https", "ftp", "file", "mms"};
+    const uint8_t *img = main->image, *end = img + main->image_size;
+    int found = 0;
+    for (const uint8_t *p = img; end - p >= 3;) {
+        const uint8_t *hit = memchr(p, ':', (size_t)(end - p));
+        if (!hit || end - hit < 2) break;
+        p = hit + 1;
+        if (hit[1] != '/') continue;
+        const uint8_t *start = hit;
+        while (start > img && word_char(start[-1]) && hit - start < 16) start--;
+        size_t len = (size_t)(hit - start);
+        if (len < 2 || len >= n || (start > img && word_char(start[-1]))) continue;
+        bool other = false;
+        for (size_t k = 0; k < sizeof(OTHERS) / sizeof(*OTHERS) && !other; k++)
+            other = strlen(OTHERS[k]) == len && !strncasecmp(OTHERS[k], (const char *)start, len);
+        if (other || (found && strlen(out) == len && !memcmp(out, start, len))) continue;
+        uint8_t alone[18];   // "\0name\0"
+        alone[0] = 0;
+        memcpy(alone + 1, start, len);
+        alone[len + 1] = 0;
+        bool standalone = false;
+        for (const uint8_t *q = img; !standalone && end - q >= (ptrdiff_t)len + 2;) {
+            const uint8_t *z = memchr(q, start[0], (size_t)(end - q));
+            if (!z || end - z < (ptrdiff_t)len + 1) break;
+            standalone = z > img && !memcmp(z - 1, alone, len + 2);
+            q = z + 1;
+        }
+        if (!standalone) continue;
+        if (found++) return false;   // two names: undecided
+        memcpy(out, start, len);
+        out[len] = 0;
+    }
+    return found == 1;
+}
+
 bool aoc_main_uses(const NsoImage *main) {
     Syms s;
     if (!syms_open(main, &s)) return false;
@@ -277,10 +323,15 @@ bool aoc_locate(const NsoImage *sdk, const NsoImage *main, AocSites *out, char *
     }
     if (unnamed) {
         char name[32];
+        // from the .nrr paths; else the name the other calls pass; else the one name both alone and before ":/"
         if (!nrr_mount_name(main, name, sizeof(name))) {
-            snprintf(err, errn, "The game's RomFS mount at main+0x%x does not form its name the expected way.",
-                     first_unnamed);
-            return false;
+            if (found)
+                snprintf(name, sizeof(name), "%s", out->mount_name);
+            else if (!path_mount_name(main, name, sizeof(name))) {
+                snprintf(err, errn, "The game's RomFS mount at main+0x%x does not form its name the expected way.",
+                         first_unnamed);
+                return false;
+            }
         }
         if (found && strcmp(name, out->mount_name)) {
             snprintf(err, errn, "The game mounts its RomFS under two names (%s, %s).", out->mount_name, name);
@@ -933,9 +984,24 @@ bool romfs_plan(RomfsReadFn read, void *user, const uint8_t header[0x50], uint64
         goto done;
     }
     {
-        // the tail: each file 16-byte aligned, then the four tables
+        // the tail: each file 16-byte aligned, then the four tables. Files the caller writes (data NULL)
+        // come first, so the part held in memory starts after them; files already in the image stay where
+        // they are. With neither, this is the layout the PC tools make.
         uint64_t tail = 0;
         for (int i = 0; i < count; i++) {
+            if (files[i].data || files[i].at) continue;
+            tail = align_up(append_at + tail, 16) - append_at;
+            out->file_offset[i] = append_at + tail;
+            tail += files[i].size;
+        }
+        uint64_t mem_from = tail ? align_up(append_at + tail, 16) - append_at : 0;
+        tail = mem_from;
+        for (int i = 0; i < count; i++) {
+            if (files[i].at) {
+                out->file_offset[i] = files[i].at;
+                continue;
+            }
+            if (!files[i].data) continue;
             tail = align_up(append_at + tail, 16) - append_at;
             out->file_offset[i] = append_at + tail;
             tail += files[i].size;
@@ -948,14 +1014,16 @@ bool romfs_plan(RomfsReadFn read, void *user, const uint8_t header[0x50], uint64
             records[i] = (uint32_t)file_meta;
             file_meta += align_up(FILE_FIXED + strlen(files[i].name), 4);
         }
-        uint64_t total = files_end + t.h[2] + dir_meta + t.h[6] + file_meta;
+        uint64_t total = files_end + t.h[2] + dir_meta + t.h[6] + file_meta - mem_from;
         uint8_t *buf = calloc(1, (size_t)total);
         if (!buf) {
             snprintf(err, errn, "Not enough memory for the new RomFS tables.");
             goto done;
         }
-        for (int i = 0; i < count; i++) memcpy(buf + (out->file_offset[i] - append_at), files[i].data, files[i].size);
-        uint8_t *dh = buf + files_end, *dm = dh + t.h[2], *fh = dm + dir_meta, *fm = fh + t.h[6];
+        for (int i = 0; i < count; i++)
+            if (files[i].data && !files[i].at)
+                memcpy(buf + (out->file_offset[i] - append_at - mem_from), files[i].data, files[i].size);
+        uint8_t *dh = buf + files_end - mem_from, *dm = dh + t.h[2], *fh = dm + dir_meta, *fm = fh + t.h[6];
         memcpy(dh, t.dir_hash, (size_t)t.h[2]);
         memcpy(dm, t.dir_meta, (size_t)t.h[4]);
         memcpy(fh, t.file_hash, (size_t)t.h[6]);
@@ -993,9 +1061,11 @@ bool romfs_plan(RomfsReadFn read, void *user, const uint8_t header[0x50], uint64
         out->base_size = append_at;
         out->append_at = append_at;
         out->tables_at = at;
+        out->tail_at = append_at + mem_from;
+        out->streamed = mem_from;
         out->tail = buf;
         out->tail_size = (size_t)total;
-        out->new_size = append_at + total;
+        out->new_size = out->tail_at + total;
         ok = true;
     }
 done:

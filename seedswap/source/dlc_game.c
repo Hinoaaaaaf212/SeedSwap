@@ -262,8 +262,9 @@ out:
 // The DLC images already built into the game (to build them in again next to a new one).
 typedef struct {
     int index;
-    uint8_t *image;
+    uint8_t *image;         // NULL for a big one: it stays where it is in romfs.bin (at)
     size_t size;
+    uint64_t at;
     char name[16];
     int is_signed;          // from game.ini dlc_signed: 1 / 0; -1 when game.ini does not say (older record)
     char label[40];
@@ -282,12 +283,18 @@ static bool id_listed(const char *list, uint64_t id) {
 static DlcVerdict judge_new(const DlcPackage *pkg, const char *label, const Built *built, int nbuilt,
                             const char *const *siblings, int nsiblings, const char *nsp_path, const char *keys,
                             char *msg, size_t msgn) {
-    DlcPack me = {label, pkg->image, pkg->image_size, pkg->is_signed ? 1 : 0};
+    DlcPack me = {label, pkg->image, pkg->image ? pkg->image_size : 0, pkg->is_signed ? 1 : 0};
     if (pkg->is_signed) { msg[0] = 0; return DLC_OK; }
+    if (pkg->stream) {
+        snprintf(msg, msgn, "%s isn't signed by Nintendo, and it is too big to check here. Use an original dump of it.",
+                 label);
+        return DLC_REFUSE;
+    }
     DlcPack others[AOC_MAX_ADD_ONS + 8];
     DlcPackage read[8];
     int n = 0, nread = 0;
-    for (int i = 0; i < nbuilt; i++) others[n++] = (DlcPack){built[i].label, built[i].image, built[i].size, built[i].is_signed};
+    for (int i = 0; i < nbuilt; i++)
+        others[n++] = (DlcPack){built[i].label, built[i].image, built[i].image ? built[i].size : 0, built[i].is_signed};
     for (int i = 0; i < nsiblings && nread < 8; i++) {
         if (!siblings[i] || !strcmp(siblings[i], nsp_path)) continue;
         VfsFile *f = vfs_open(VFS_SD, siblings[i], false);
@@ -298,7 +305,7 @@ static DlcVerdict judge_new(const DlcPackage *pkg, const char *label, const Buil
         vfs_close(f);
         if (!ok) continue;
         if (p->application_id != pkg->application_id || p->title_id == pkg->title_id) { dlcpkg_free(p); continue; }
-        others[n++] = (DlcPack){"another pack", p->image, p->image_size, p->is_signed ? 1 : 0};
+        others[n++] = (DlcPack){"another pack", p->image, p->image ? p->image_size : 0, p->is_signed ? 1 : 0};
         nread++;
     }
     DlcVerdict v = dlc_judge(&me, others, n, msg, msgn);
@@ -339,6 +346,7 @@ typedef struct {
     int index;
     char name[96], file[16];
     bool take;
+    uint8_t sha[32];   // a big image copied from its dump: its SHA-256 as written
 } NewPack;
 
 // Adds a sentence about a dump that is left out to out->skipped.
@@ -346,6 +354,36 @@ static void skip_note(DlcResult *out, const char *text) {
     size_t at = strlen(out->skipped);
     if (at + 8 < sizeof(out->skipped)) snprintf(out->skipped + at, sizeof(out->skipped) - at, "%s%s", at ? " " : "", text);
     app_log("DLC: left out: %s", text);
+}
+
+static int rf_write(void *user, uint64_t off, const void *buf, size_t n) {
+    return vfs_write((VfsFile *)user, (int64_t)off, buf, n);
+}
+
+// Zeros from `from` to `to` (the gaps between 16-byte aligned files), as the PC tools leave them.
+static bool zero_fill(VfsFile *f, int64_t from, int64_t to) {
+    static const uint8_t zero[16];
+    while (from < to) {
+        size_t n = to - from > 16 ? 16 : (size_t)(to - from);
+        if (vfs_write(f, from, zero, n) != 0) return false;
+        from += (int64_t)n;
+    }
+    return true;
+}
+
+typedef struct {
+    ProgressFn cb;
+    const char *name;
+    float from, to;
+} Copying;
+
+static bool copy_progress(void *user, uint64_t done, uint64_t total) {
+    Copying *c = user;
+    if (!c->cb) return true;
+    char text[160];
+    snprintf(text, sizeof(text), "Copying %s (%llu of %llu MB)…", c->name, (unsigned long long)(done >> 20),
+             (unsigned long long)(total >> 20));
+    return c->cb(c->from + (c->to - c->from) * (float)((double)done / (double)(total ? total : 1)), text);
 }
 
 // strict (one dump, dlc_add): any problem stops with its sentence. Otherwise (dlc_add_many) a dump that
@@ -469,8 +507,10 @@ static bool dlc_add_set(const char *const *paths, int npaths, bool strict, const
             char path[64];
             snprintf(path, sizeof(path), "/" AOC_DIRECTORY "/%s", b->name);
             uint64_t at = 0, len = 0;
-            if (!romfs_find(vfs_cb, rf, old_header, path, &at, &len) || len > DLCPKG_MAX_IMAGE ||
-                !(b->image = malloc(len ? (size_t)len : 1)) || !read_at(rf, (int64_t)at, b->image, (size_t)len)) {
+            bool found = romfs_find(vfs_cb, rf, old_header, path, &at, &len);
+            if (found && len > DLCPKG_MAX_IMAGE) b->at = at;   // big: referenced where it is, not read
+            else if (!found || !(b->image = malloc(len ? (size_t)len : 1)) ||
+                     !read_at(rf, (int64_t)at, b->image, (size_t)len)) {
                 snprintf(err, errn, "The add-on content already built in (%s) could not be read back from romfs.bin.", path);
                 goto out;
             }
@@ -538,14 +578,14 @@ static bool dlc_add_set(const char *const *paths, int npaths, bool strict, const
     RomfsNewFile files[AOC_MAX_ADD_ONS];
     for (int i = 0; i < nbuilt; i++) {
         indices[i] = built[i].index;
-        files[i] = (RomfsNewFile){built[i].name, built[i].image, built[i].size};
+        files[i] = (RomfsNewFile){built[i].name, built[i].image, built[i].size, built[i].at};
     }
     int count = nbuilt;
     for (int k = 0; k < npaths; k++) {
         if (!np[k].take) continue;
         aoc_image_name(np[k].index, np[k].file);
         indices[count] = np[k].index;
-        files[count++] = (RomfsNewFile){np[k].file, np[k].pkg.image, np[k].pkg.image_size};
+        files[count++] = (RomfsNewFile){np[k].file, np[k].pkg.image, np[k].pkg.image_size, 0};
     }
     // sort by index, as the PC tools do
     for (int i = 1; i < count; i++)
@@ -556,11 +596,11 @@ static bool dlc_add_set(const char *const *paths, int npaths, bool strict, const
 
     // 3. the RomFS plan (from the tables of the game without DLC)
     if (!romfs_plan(vfs_cb, rf, base_header, (uint64_t)romfs_size, AOC_DIRECTORY, files, count, &plan, err, errn)) goto out;
-    out->tail_bytes = (int64_t)plan.tail_size;
+    out->tail_bytes = (int64_t)(plan.tail_size + plan.streamed);
     int64_t free_space = vfs_free_space(VFS_SD);
-    if (free_space >= 0 && free_space < (int64_t)plan.tail_size + 2 * 33 * 1024 * 1024 + 16 * 1024 * 1024) {
+    if (free_space >= 0 && free_space < out->tail_bytes + 2 * 33 * 1024 * 1024 + 16 * 1024 * 1024) {
         snprintf(err, errn, "Not enough free space on the SD card (needs about %lld MB).",
-                 (long long)((plan.tail_size + 82 * 1024 * 1024) >> 20));
+                 (long long)((out->tail_bytes + 82 * 1024 * 1024) >> 20));
         goto out;
     }
 
@@ -577,10 +617,32 @@ static bool dlc_add_set(const char *const *paths, int npaths, bool strict, const
     if (cb) cb(0.82f, "Appending the add-on content to romfs.bin…");
     {
         uint8_t want[32], got[32], head[0x50];
-        bool w = vfs_write(rf, romfs_size, plan.tail, plan.tail_size) == 0 && vfs_flush(rf) == 0;
+        bool w = true;
+        // big add-on content: copied from its dump, block by block, each checked against the dump's hashes
+        int64_t cursor = romfs_size;
+        for (int i = 0; w && i < count; i++) {
+            if (files[i].data || files[i].at) continue;
+            int k = 0;
+            while (k < npaths && !(np[k].take && !strcmp(np[k].file, files[i].name))) k++;
+            if (k == npaths || !np[k].pkg.stream) { snprintf(err, errn, "Internal error: %s has no data.", files[i].name); goto undo; }
+            w = zero_fill(rf, cursor, (int64_t)plan.file_offset[i]);
+            VfsFile *src = w ? vfs_open(VFS_SD, paths[k], false) : NULL;
+            Copying cp = {cb, np[k].name, 0.82f, 0.88f};
+            w = src && dlcpkg_copy(&np[k].pkg, vfs_cb, src, rf_write, rf, plan.file_offset[i], np[k].sha, copy_progress,
+                                   &cp, err, errn);
+            if (src) vfs_close(src);
+            if (!w) {
+                if (!src) snprintf(err, errn, "%s could not be opened again.", paths[k]);
+                goto undo;
+            }
+            cursor = (int64_t)(plan.file_offset[i] + files[i].size);
+            app_log("DLC: %s: %lld bytes copied from its dump into romfs.bin", np[k].name, (long long)files[i].size);
+        }
+        w = zero_fill(rf, cursor, (int64_t)plan.tail_at) &&
+            vfs_write(rf, (int64_t)plan.tail_at, plan.tail, plan.tail_size) == 0 && vfs_flush(rf) == 0;
         sha256(plan.tail, plan.tail_size, want);
-        w = w && vfs_size(rf) == (int64_t)plan.new_size && sha_region(rf, romfs_size, (int64_t)plan.tail_size, got) &&
-            !memcmp(want, got, 32);
+        w = w && vfs_size(rf) == (int64_t)plan.new_size &&
+            sha_region(rf, (int64_t)plan.tail_at, (int64_t)plan.tail_size, got) && !memcmp(want, got, 32);
         if (!w) {
             snprintf(err, errn, "The add-on content could not be appended to romfs.bin (or did not read back); the game "
                      "is unchanged.");
@@ -596,8 +658,16 @@ static bool dlc_add_set(const char *const *paths, int npaths, bool strict, const
             uint64_t at = 0, len = 0;
             uint8_t *back = NULL;
             w = romfs_find(vfs_cb, rf, plan.new_header, path, &at, &len) && len == files[i].size &&
-                (back = malloc(len ? (size_t)len : 1)) && read_at(rf, (int64_t)at, back, (size_t)len) &&
-                !memcmp(back, files[i].data, (size_t)len);
+                at == plan.file_offset[i];
+            if (w && files[i].data)
+                w = (back = malloc(len ? (size_t)len : 1)) && read_at(rf, (int64_t)at, back, (size_t)len) &&
+                    !memcmp(back, files[i].data, (size_t)len);
+            else if (w && !files[i].at) {   // copied from its dump: read back whole, by its hash
+                if (cb) cb(0.89f, "Reading the add-on content back…");
+                int k = 0;
+                while (k < npaths && !(np[k].take && !strcmp(np[k].file, files[i].name))) k++;
+                w = k < npaths && sha_region(rf, (int64_t)at, (int64_t)len, got) && !memcmp(got, np[k].sha, 32);
+            }
             free(back);
         }
         // the new tables hold the game's own files and the new ones

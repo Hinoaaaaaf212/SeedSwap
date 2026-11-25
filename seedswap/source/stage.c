@@ -838,8 +838,8 @@ static bool unpack(Romfs *r, const char *path, Progress *pr, RomfsResult *out) {
     pr->total = pr->done + 2 * end;
     vfs_delete(VFS_SD, path);
     if (vfs_create(VFS_SD, path, (int64_t)end) != 0) {
-        snprintf(r->err, r->errn, "SeedSwap could not create a %.2f GB file on the SD card (%s). A FAT32 card holds files "
-                 "up to 4 GB only; exFAT is needed.", (double)end / 1e9, vfs_last_error());
+        snprintf(r->err, r->errn, "SeedSwap could not create a %.2f GB file on the SD card (%s).", (double)end / 1e9,
+                 vfs_last_error());
         goto done;
     }
     created = true;
@@ -1042,8 +1042,8 @@ bool stage_romfs(Nca *base, Nca *patch, const char *path, ProgressFn cb, RomfsRe
     // 2. the data, in the order it lies in the dumps, each piece written where it belongs
     vfs_delete(VFS_SD, staged);
     if (vfs_create(VFS_SD, staged, (int64_t)data_size) != 0) {
-        snprintf(err, errn, "SeedSwap could not create a %.2f GB file on the SD card (%s). A FAT32 card holds files up to "
-                 "4 GB only; exFAT is needed.", (double)data_size / 1e9, vfs_last_error());
+        snprintf(err, errn, "SeedSwap could not create a %.2f GB file on the SD card (%s).", (double)data_size / 1e9,
+                 vfs_last_error());
         goto done;
     }
     created = true;

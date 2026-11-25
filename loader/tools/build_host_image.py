@@ -50,12 +50,16 @@ def spare_id(n: int) -> str:
     return PLACEHOLDER % n
 
 
+ROMFS_PARTS = 8    # romfs.bin.00 .. romfs.bin.07: a RomFS split for FAT32 in parts of 0xFFFF0000 bytes (the runtime joins the parts present)
+
+
 def listing(slots) -> str:
     rows = ["D /ns2jb-modloader/contents/"]
     for s in slots:
         rows += ["D /ns2jb-modloader/contents/%s/" % s,
                  "F 33554432 /ns2jb-modloader/contents/%s/exefs.nsp" % s,
                  "F 33554432 /ns2jb-modloader/contents/%s/romfs.bin" % s]
+        rows += ["F 33554432 /ns2jb-modloader/contents/%s/romfs.bin.%02d" % (s, k) for k in range(ROMFS_PARTS)]
     return "\n".join(rows) + "\n"
 
 

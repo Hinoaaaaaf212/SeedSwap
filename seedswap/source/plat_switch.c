@@ -3,6 +3,7 @@
 // framebuffer, double buffered. Files: the SD card and the Seedsow account
 // save through fsp-srv (HEN's FS proxy root, as mxdump/mxwrite use it).
 #include "platform.h"
+#include "vfs_raw.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,10 +20,10 @@ static bool g_save_open, g_acc_ok;
 static char g_err[160];
 static uint64_t g_down, g_held, g_repeat_at;
 
-struct VfsFile { FsFile f; };
+struct PVfsFile { FsFile f; };
 
 static void set_err(const char *what, Result rc) { snprintf(g_err, sizeof(g_err), "%s failed (0x%x)", what, rc); }
-const char *vfs_last_error(void) { return g_err; }
+const char *pvfs_last_error(void) { return g_err; }
 
 bool plat_init(void) {
     if (R_FAILED(framebufferCreate(&g_fb, nwindowGetDefault(), SCREEN_W, SCREEN_H, PIXEL_FORMAT_RGBA_8888, 2)))
@@ -115,7 +116,7 @@ void plat_frame_end(void) { framebufferEnd(&g_fb); }
 // ---- files
 static FsFileSystem *fsys(VfsRoot r) { return r == VFS_SAVE ? (g_save_open ? &g_save : NULL) : &g_sd; }
 
-int vfs_stat(VfsRoot r, const char *path, bool *is_dir, int64_t *size) {
+int pvfs_stat(VfsRoot r, const char *path, bool *is_dir, int64_t *size) {
     FsFileSystem *fs = fsys(r);
     if (!fs) return -1;
     FsDirEntryType type;
@@ -136,7 +137,7 @@ int vfs_stat(VfsRoot r, const char *path, bool *is_dir, int64_t *size) {
     return 0;
 }
 
-int vfs_list(VfsRoot r, const char *dir, VfsEntry **out, int *count) {
+int pvfs_list(VfsRoot r, const char *dir, VfsEntry **out, int *count) {
     *out = NULL;
     *count = 0;
     FsFileSystem *fs = fsys(r);
@@ -164,24 +165,24 @@ int vfs_list(VfsRoot r, const char *dir, VfsEntry **out, int *count) {
     return 0;
 }
 
-int vfs_create(VfsRoot r, const char *path, int64_t size) {
+int pvfs_create(VfsRoot r, const char *path, int64_t size) {
     FsFileSystem *fs = fsys(r);
     Result rc = fs ? fsFsCreateFile(fs, path, size, 0) : MAKERESULT(Module_Libnx, LibnxError_NotInitialized);
     if (R_FAILED(rc)) { set_err("create file", rc); return -1; }
     return 0;
 }
 
-VfsFile *vfs_open(VfsRoot r, const char *path, bool write) {
+PVfsFile *pvfs_open(VfsRoot r, const char *path, bool write) {
     FsFileSystem *fs = fsys(r);
     if (!fs) return NULL;
-    VfsFile *f = calloc(1, sizeof(*f));
+    PVfsFile *f = calloc(1, sizeof(*f));
     if (!f) return NULL;
     Result rc = fsFsOpenFile(fs, path, write ? (FsOpenMode_Read | FsOpenMode_Write | FsOpenMode_Append) : FsOpenMode_Read, &f->f);
     if (R_FAILED(rc)) { set_err("open file", rc); free(f); return NULL; }
     return f;
 }
 
-int vfs_read(VfsFile *f, int64_t off, void *buf, size_t n, size_t *got) {
+int pvfs_read(PVfsFile *f, int64_t off, void *buf, size_t n, size_t *got) {
     u64 g = 0;
     Result rc = fsFileRead(&f->f, off, buf, n, FsReadOption_None, &g);
     if (got) *got = g;
@@ -189,43 +190,43 @@ int vfs_read(VfsFile *f, int64_t off, void *buf, size_t n, size_t *got) {
     return 0;
 }
 
-int vfs_write(VfsFile *f, int64_t off, const void *buf, size_t n) {
+int pvfs_write(PVfsFile *f, int64_t off, const void *buf, size_t n) {
     Result rc = fsFileWrite(&f->f, off, buf, n, FsWriteOption_None);
     if (R_FAILED(rc)) { set_err("write", rc); return -1; }
     return 0;
 }
 
-int vfs_flush(VfsFile *f) { return R_SUCCEEDED(fsFileFlush(&f->f)) ? 0 : -1; }
-int64_t vfs_size(VfsFile *f) { s64 s = -1; fsFileGetSize(&f->f, &s); return s; }
-void vfs_close(VfsFile *f) { if (f) { fsFileClose(&f->f); free(f); } }
+int pvfs_flush(PVfsFile *f) { return R_SUCCEEDED(fsFileFlush(&f->f)) ? 0 : -1; }
+int64_t pvfs_size(PVfsFile *f) { s64 s = -1; fsFileGetSize(&f->f, &s); return s; }
+void pvfs_close(PVfsFile *f) { if (f) { fsFileClose(&f->f); free(f); } }
 
 int vfs_mkdir(VfsRoot r, const char *path) {
     bool dir = false;
-    if (vfs_stat(r, path, &dir, NULL) == 0) return dir ? 0 : -1;
+    if (pvfs_stat(r, path, &dir, NULL) == 0) return dir ? 0 : -1;
     FsFileSystem *fs = fsys(r);
     Result rc = fs ? fsFsCreateDirectory(fs, path) : MAKERESULT(Module_Libnx, LibnxError_NotInitialized);
     if (R_FAILED(rc)) { set_err("create directory", rc); return -1; }
     return 0;
 }
 
-int vfs_delete(VfsRoot r, const char *path) {
+int pvfs_delete(VfsRoot r, const char *path) {
     FsFileSystem *fs = fsys(r);
     Result rc = fs ? fsFsDeleteFile(fs, path) : MAKERESULT(Module_Libnx, LibnxError_NotInitialized);
     if (R_FAILED(rc)) { set_err("delete file", rc); return -1; }
     return 0;
 }
 
-int vfs_rmtree(VfsRoot r, const char *path) {
+int pvfs_rmtree(VfsRoot r, const char *path) {
     FsFileSystem *fs = fsys(r);
     Result rc = fs ? fsFsDeleteDirectoryRecursively(fs, path) : MAKERESULT(Module_Libnx, LibnxError_NotInitialized);
     if (R_FAILED(rc)) { set_err("delete directory", rc); return -1; }
     return 0;
 }
 
-int vfs_rename(VfsRoot r, const char *from, const char *to) {
+int pvfs_rename(VfsRoot r, const char *from, const char *to) {
     FsFileSystem *fs = fsys(r);
     bool dir = false;
-    if (!fs || vfs_stat(r, from, &dir, NULL) != 0) { snprintf(g_err, sizeof(g_err), "rename: %s missing", from); return -1; }
+    if (!fs || pvfs_stat(r, from, &dir, NULL) != 0) { snprintf(g_err, sizeof(g_err), "rename: %s missing", from); return -1; }
     Result rc = dir ? fsFsRenameDirectory(fs, from, to) : fsFsRenameFile(fs, from, to);
     if (R_FAILED(rc)) { set_err("rename", rc); return -1; }
     return 0;
@@ -434,6 +435,16 @@ int save_extend(const Uid *uid, int64_t data, int64_t journal) {
     Result rc = fsExtendSaveDataFileSystem(FsSaveDataSpaceId_User, id, data, journal);
     if (R_FAILED(rc)) { set_err("ExtendSaveData", rc); return -1; }
     return 0;
+}
+
+int user_list_all(Uid *out, int max) {
+    if (!g_acc_ok || max <= 0) return -1;
+    AccountUid *au = calloc((size_t)max, sizeof(*au));
+    s32 total = 0;
+    if (!au || R_FAILED(accountListAllUsers(au, max, &total))) { free(au); return -1; }
+    for (s32 i = 0; i < total && i < max; i++) memcpy(out[i].b, &au[i], 16);
+    free(au);
+    return total < max ? total : max;
 }
 
 bool user_name(const Uid *uid, char *out, size_t n) {

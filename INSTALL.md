@@ -34,14 +34,14 @@ their authors and check every file.
 
 **With `build.exe` (Windows):**
 
-1. From the [experimental release](../../releases/tag/v0.15.0-experimental), download **`build.exe`** and **`seedswap.nro`**
+1. From the [experimental release](../../releases/tag/v1.0.0-experimental), download **`build.exe`** and **`seedswap.nro`**
    into one folder.
 2. Double-click **`build.exe`**. If Windows warns about an unknown app, click **More info → Run
    anyway**.
 
 **With Python (any PC, Python 3.8 or newer):**
 
-1. From the [experimental release](../../releases/tag/v0.15.0-experimental), download **`seedswap.nro`** and **Source code
+1. From the [experimental release](../../releases/tag/v1.0.0-experimental), download **`seedswap.nro`** and **Source code
    (zip)**.
 2. Unzip the source code, and put `seedswap.nro` in that folder.
 3. Open a terminal there and run `python3 build.py --nro seedswap.nro`. On Windows, use `py` in place
@@ -114,7 +114,7 @@ Run the launcher (Seedsow → A) every time you turn the console on.
 
 1. Copy your `prod.keys` to `SD:/switch/prod.keys`.
 2. Copy your dumps to `SD:/seedswap/nsp/`, with their updates and DLC. SeedSwap reads `.nsp`, `.nsz`,
-   `.xci` and `.xcz`.
+   `.xci` and `.xcz`. On a FAT32 card, a dump over 4 GB can be a split folder (`game.nsp/00`, `01`, ...).
 3. In SeedSwap, open **Convert** and press **Y**. Pick the game and press **A**. Its update goes in too.
    - To add a DLC, pick it and press **A**. A game can have up to 100. Press A again to remove one.
    - To add all of a game's DLC at once, pick one of its DLC, press **A**, then **X**. Afterwards

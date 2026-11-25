@@ -429,8 +429,9 @@ static void draw_dialog(void) {
             if (i == U.user_sel) gfx_round_outline(row, 12, 2, off ? C_FAINT : C_ACCENT);
             gfx_text_ellipsis(FONT_BODY_BOLD, row.x + 16, row.y + 4, row.w - 200, off ? C_FAINT : C_TEXT, u->name);
             char sub[200];
-            snprintf(sub, sizeof(sub), "%.8s\xe2\x80\xa6%s%s", u->hex, u->hex + 24,
-                     u->exploit ? "  \xe2\x80\xa2  has the exploit save" : u->loader ? "  \xe2\x80\xa2  protected by the loader" : "");
+            snprintf(sub, sizeof(sub), "%.8s\xe2\x80\xa6%s%s%s", u->hex, u->hex + 24,
+                     u->exploit ? "  \xe2\x80\xa2  has the exploit save" : u->loader ? "  \xe2\x80\xa2  protected by the loader" : "",
+                     u->no_save && !u->exploit && !u->loader ? "  \xe2\x80\xa2  no save yet" : "");
             gfx_text_ellipsis(FONT_SMALL, row.x + 16, row.y + row.h - 24, row.w - 32, C_DIM, sub);
             const char *tag = u->play ? "Play user" : u->exploit || u->loader ? "Never" : u->kept_out ? "Kept out" : NULL;
             if (tag) {
@@ -497,6 +498,10 @@ static void draw_dialog(void) {
 static void redraw(void);
 static const char *when_text(void);
 static bool progress_cb(float frac, const char *text);
+
+#ifndef ADD_TO_HOME
+#define ADD_TO_HOME 1   // 0 in the stable build: no Add to HOME (X in Convert)
+#endif
 
 // Progress of a job B can stop (the HOME install).
 static bool home_progress(float frac, const char *text) {
@@ -807,7 +812,8 @@ static void run_action(void) {
         if (ok)
             message(C_ACCENT, "Play user set", "Games now run on %s.%s%s", row.name,
                     restart ? again : "",
-                    U.lib.play_user_has_save ? "" : "\n\nStart the host game on this user once before switching games.");
+                    U.lib.play_user_has_save ? "" : "\n\nStart the host game on this user once before switching games. "
+                                                     "Don't have it? Pick another host in Library (-).");
         else message(C_BAD, "Not changed", "%s", err);
         break;
     }
@@ -1733,8 +1739,9 @@ void ui_draw(void) {
         draw_convert();
         bool dlc = U.nsp_count && U.nsps[U.sel[TAB_CONVERT]].kind == NSP_DLC;
         Hint h[] = {{"A", dlc ? "Add / remove DLC" : "Convert"}, {"X", "Add to HOME"}, {"Y", "Refresh"}, {"+", "Exit"}};
-        if (dlc) h[1] = h[0];
-        draw_footer(U.nsp_count ? (dlc ? h + 1 : h) : h + 2, U.nsp_count ? (dlc ? 3 : 4) : 2, st, sc);
+        bool x = ADD_TO_HOME && !dlc;
+        if (!x) h[1] = h[0];
+        draw_footer(U.nsp_count ? (x ? h : h + 1) : h + 2, U.nsp_count ? (x ? 4 : 3) : 2, st, sc);
         break;
     }
     case TAB_SAVES: {
@@ -1836,7 +1843,7 @@ bool ui_input(uint64_t b) {
     else if (U.tab == TAB_LIBRARY && (b & BTN_X)) library_compat();
     else if (U.tab == TAB_LIBRARY && (b & BTN_MINUS)) open_hosts();
     if (U.tab == TAB_CONVERT && (b & BTN_A) && U.nsp_count) convert_activate();
-    else if (U.tab == TAB_CONVERT && (b & BTN_X) && U.nsp_count) home_offer();
+    else if (ADD_TO_HOME && U.tab == TAB_CONVERT && (b & BTN_X) && U.nsp_count) home_offer();
     if (U.tab == TAB_SAVES) {
         if ((b & BTN_X) && U.lib.play_user_has_save) {
             U.act = ACT_BACKUP;

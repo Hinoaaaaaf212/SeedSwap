@@ -49,16 +49,19 @@ typedef int (*RomfsReadFn)(void *user, uint64_t off, void *buf, size_t n);  // 0
 
 typedef struct {
     const char *name;          // a plain file name in /__aoc
-    const uint8_t *data;
+    const uint8_t *data;       // NULL: written by the caller at file_offset (a big image copied from its dump)
     size_t size;
+    uint64_t at;               // non-zero: already in the image at this offset (not copied again)
 } RomfsNewFile;
 
 typedef struct {
     uint8_t old_header[0x50], new_header[0x50];
     uint64_t base_size;        // the image the tables belong to (its old end)
-    uint64_t append_at;        // where the tail goes (normally base_size; later when a tail is replaced)
+    uint64_t append_at;        // where the new data starts (normally base_size; later when a tail is replaced)
     uint64_t tables_at, new_size;
-    uint8_t *tail;             // malloc'd
+    uint64_t tail_at;          // where `tail` goes: append_at, after the files the caller writes (data NULL)
+    uint64_t streamed;         // bytes the caller writes, from append_at to tail_at
+    uint8_t *tail;             // malloc'd: the files held in memory, then the tables
     size_t tail_size;
     uint64_t file_offset[AOC_MAX_ADD_ONS];  // where each new file lies in the image
 } RomfsPlan;
