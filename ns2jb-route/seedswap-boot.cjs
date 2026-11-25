@@ -146,7 +146,8 @@ async function boot(o, deps = {}) {
     const v = kaihen.checkNs2jb(o.ns2jb);
     if (!v.ok)
       throw Error(`ns2jb in ${o.ns2jb} isn't commit ${kaihen.NS2JB.commit.slice(0, 7)}. ` +
-        `Run: git -C "${o.ns2jb}" fetch && git -C "${o.ns2jb}" checkout ${kaihen.NS2JB.commit.slice(0, 7)}`);
+        `Run: git -C "${o.ns2jb}" fetch && git -C "${o.ns2jb}" checkout ${kaihen.NS2JB.commit.slice(0, 7)}` +
+        ` (or download ${kaihen.NS2JB.zip} and use its folder)`);
     sourceSha256 = v.digest;                          // what run.cjs records for this folder
   }
   const release = kaihen.readRelease(o.kaihen);

@@ -9,7 +9,7 @@ About half an hour the first time.
 
 ## You need
 
-- A Switch 2 on **firmware 23.0.1**, with **[kaiHEN](https://github.com/ouncebrew/kaihen) 20261123**
+- A Switch 2 on **firmware 23.0.1**, with **[kaiHEN 20261123](https://github.com/ouncebrew/kaihen/releases/tag/20261123)**
   on the SD card (20261117.1 also works). Copy **all** of kaiHEN's zip to the root of the SD card,
   not only its `sdcard/` folder: Seedsow needs `bootstrap.bin` and `ro/` too. The first run moves
   the files to `kaihen/bin`.
@@ -126,8 +126,13 @@ run one command on a computer every time you turn the console on.
 - SmileBASIC 4 or its demo, with [ns2jb](https://gitlab.com/kurumuz/ns2jb)'s one-time setup done, on
   a spare user. Don't play on that user: SeedSwap never lets it play.
 - A computer with macOS or Linux, or Windows with WSL, and Node.js 22 or newer.
-- ns2jb at commit `ae33da1`: `git -C ns2jb fetch`, then `git -C ns2jb checkout ae33da1`.
-- [kaiHEN](https://github.com/ouncebrew/kaihen) 20261123, unzipped.
+- ns2jb at commit `ae33da1`: download
+  [its zip](https://gitlab.com/kurumuz/ns2jb/-/archive/ae33da13542c616874ec23c56b7b6a660745c5e3/ns2jb-ae33da13542c616874ec23c56b7b6a660745c5e3.zip),
+  unzip it and rename the folder you get to `ns2jb`. If you have ns2jb from git:
+  `git -C ns2jb fetch`, then `git -C ns2jb checkout ae33da1`.
+- kaiHEN 20261123: download
+  [kaiHEN-20261123.zip](https://github.com/ouncebrew/kaihen/releases/download/20261123/kaiHEN-20261123.zip)
+  and unzip it into a folder named `kaiHEN-20261123`.
 
 **Steps:**
 
@@ -185,6 +190,6 @@ Don't install system updates: kaiHEN needs firmware 23.0.1.
 | "permissions aren't known yet" | Start that host from HOME once, then open SeedSwap again. |
 | A dump doesn't convert | SeedSwap says why. The **Log** tab has details. |
 | You want your old save back | In ns2-savekit, back up, then **3) Replace** with the folder of your first backup. |
-| seedswap-boot: "isn't commit ae33da1" | Run the two `git` commands it shows. |
-| seedswap-boot: "This kaiHEN build isn't one SeedSwap knows" | Use kaiHEN 20261123. |
+| seedswap-boot: "isn't commit ae33da1" | Get ns2jb at commit `ae33da1` (zip link under **You need** above). |
+| seedswap-boot: "This kaiHEN build isn't one SeedSwap knows" | Use [kaiHEN 20261123](https://github.com/ouncebrew/kaihen/releases/download/20261123/kaiHEN-20261123.zip). |
 | seedswap-boot: "restart the console" | Restart, open SmileBASIC 4, and run the command again. |

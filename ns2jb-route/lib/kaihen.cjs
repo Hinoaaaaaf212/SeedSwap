@@ -19,6 +19,7 @@ const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 // sourceDigest() writes to result.json for that commit; the files are the ones loaded here.
 const NS2JB = {
   commit: 'ae33da13542c616874ec23c56b7b6a660745c5e3',
+  zip: 'https://gitlab.com/kurumuz/ns2jb/-/archive/ae33da13542c616874ec23c56b7b6a660745c5e3/ns2jb-ae33da13542c616874ec23c56b7b6a660745c5e3.zip',
   sourceSha256: '5cdf1a57a511e135eeacb8cadfaa7ae3dbf3a978ea4f77fb06efc80f56b40828',
   files: {
     'switch2/ro/start-hen.cjs': 'f7db32f8a92a3239988628690f529bc922e176f8db3f19853032dafbc3ee16d8',
@@ -55,7 +56,8 @@ function sourceDigest(ns2jb, {stripCr = false} = {}) {
 
 // The ns2jb folder against the pin: {ok, digest} where digest is what run.cjs will record.
 function checkNs2jb(ns2jb) {
-  const digest = sourceDigest(ns2jb);
+  let digest;
+  try { digest = sourceDigest(ns2jb); } catch { return {digest: null, ok: false}; }   // older ns2jb: files missing
   return {digest, ok: digest === NS2JB.sourceSha256 || sourceDigest(ns2jb, {stripCr: true}) === NS2JB.sourceSha256};
 }
 
@@ -104,7 +106,8 @@ function readRelease(ship) {
   const sizes = {bootstrap: size('bootstrap.bin'), ro: size('ro/main'), hen: of('/kaihen/bin/hen/main'), game: of('/kaihen/bin/game/main')};
   const release = RELEASES.find(r => ['bootstrap', 'ro', 'hen', 'game'].every(k => r[k] === sizes[k]));
   check(release, `This kaiHEN build isn't one SeedSwap knows (bootstrap.bin ${sizes.bootstrap} B, ro/main ${sizes.ro} B). ` +
-    `Use kaiHEN ${RELEASES[0].name}, or a SeedSwap release made for your kaiHEN.`);
+    `Use kaiHEN ${RELEASES[0].name} (https://github.com/ouncebrew/kaihen/releases/download/${RELEASES[0].name}/kaiHEN-${RELEASES[0].name}.zip), ` +
+    `or a SeedSwap release made for your kaiHEN.`);
   return {release, files, bootstrap: path.join(ship, 'bootstrap.bin'), ro: path.join(ship, 'ro/main')};
 }
 
