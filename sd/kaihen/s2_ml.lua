@@ -3,7 +3,7 @@
 -- before kaiHEN's RO launch; the hook pcalls it and always continues with kaiHEN afterwards.
 --   M1  stage the ns2jb helper RO (/kaihen/ml/helper_ro_main) as RO donor and launch it; reach
 --       ro:dmnt through FS's sm: session; export FS's process handle; FS .text base from the
---       notifier vtable, checked with helper 0x10; caves must be empty.
+--       notifier vtable, checked with helper 0x10 (another FS build stops here); caves must be empty.
 --   M2  FS call bridge (port of ns2jb lib/native/bridge.cjs): templates from /kaihen/ml/tpl.lua
 --       staged in the cave, notifier slot 4 hooked per call.
 --   M3  if /kaihen/ml/install/image.lua exists (tools/build_install_image.cjs): install the
@@ -25,6 +25,7 @@ local ML = {}
 local HELPER_PATH   = "/kaihen/ml/helper_ro_main"
 local INSTALL_DIR   = "/kaihen/ml/install"
 local NOTIFIER_SLOT4_OFFSET = 0x1201b0   -- GetEventHandle in FS .text (ns2jb fs-abi reference build)
+local FS_TEXT_BYTES = 0x24e000           -- that build's .text size (reference capture a8cf885c)
 local GATEWAY_CAVE  = 0x24d100
 local CONTROL_CAVE  = 0x24d800
 local FS_PROGRAM    = 0x0400000000000000
@@ -306,7 +307,15 @@ function ML.run(h)
         hx(res), fs_pid, hx(out[1]), hx(out[4]), hx(out[5]), out[6] % TWO32, out[7] % TWO32,
         hx(out[9]), hx(out[10]), hx(out[11]), hx(out[12])))
     assert(res == 0 and out[1] == FS_PROGRAM, "helper 0x10 did not identify FS")
-    if out[4] ~= base then log("WARNING: code region base " .. hx(out[4]) .. " differs from the vtable guess") end
+    -- Everything below (bridge, caves, install image) is made for one FS build, the reference capture
+    -- a8cf885c. Another build, even on the same firmware, has its code elsewhere: the vtable guess is
+    -- then off and the .text size differs, and the caves would land on live code. Stop here, before
+    -- any FS change.
+    if out[4] ~= base or text_bytes ~= FS_TEXT_BYTES then
+        error(string.format("FS build not supported: .text %s bytes, slot 4 at %s; this loader is for %s and %s " ..
+            "(FS build a8cf885c). FS was not changed.", hx(text_bytes), hx(slot4 - out[4]), hx(FS_TEXT_BYTES),
+            hx(NOTIFIER_SLOT4_OFFSET)))
+    end
 
     -- Query any FS address: region {base, size, type, attr, perm}, plus the first free page.
     local function query(addr)

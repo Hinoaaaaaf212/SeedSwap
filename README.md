@@ -5,6 +5,11 @@ Switch 1 game you have installed.
 
 Needs firmware 23.0.1 and kaiHEN 20261123 (20261117.1 also works).
 
+> [!NOTE]
+> **Work in progress.** This is a project I keep changing. The **[latest release](../../releases/latest)**
+> is the one to use; pre-releases are tests and can be rough or half-finished. Things move around
+> between versions.
+
 > [!WARNING]
 > **SeedSwap can brick your console.** It's rare, but it can happen. SeedSwap runs on the same base
 > as seedsow-semi-untethered and uses the same Seedsow file system code (Seedsow FS), so anything that

@@ -468,6 +468,11 @@ if not init_group.ok then
 return {ok = false, aliasInstalled = false, failureReason = "candidate-reserve-group-failed"}
 end
 
+local GUARD = _G.__s2_guard
+if GUARD and not GUARD.quiet(rt, fs, setup, config, log, "the candidate") then
+fs.close_reservation_group(init_group, true, setup.pktBuf)
+return {ok = false, aliasInstalled = false, failureReason = "guard-fs-busy"}
+end
 local before_cand = fs.read_allocation_counters(setup.handles.rootSession, setup.pktBuf)
 local candidate_handle = fs.open_content_storage(setup.handles.rootSession)
 if candidate_handle == 0 then
@@ -498,6 +503,12 @@ aliasControlHex = "",
 failureReason = "candidate-prime-mismatch"
 }
 end
+if GUARD and not GUARD.candidate_ok(alloc_cost, log) then
+fs.close_reservation_group(init_group, true, setup.pktBuf)
+return {ok = false, aliasInstalled = false, candidateHandle = candidate_handle, primeHex = prime_hex,
+aliasControlHex = "", failureReason = "guard-candidate-cost"}
+end
+if GUARD then GUARD.step(str_format("alias: candidate placed (%dB)", alloc_cost)) end
 log(str_format("BASELINE: OK candidate=0x%x alloc=%dB", candidate_handle, alloc_cost))
 
 
@@ -528,11 +539,13 @@ local a_hex = (a_read.error == 0) and P.hex(rt.rd(alias_buf, 16)) or ""
 if a_hex ~= "" and a_hex ~= control_hex then
 tried = tried + 1
 M.set_alias_offset(config, off)
+if GUARD then GUARD.step(str_format("alias: bucket 0x%x", off)) end
 alias_ctrl_hex = a_hex
 needs_retire = true
 local copy_res = M.install_address_header(rt, fs, setup, config, campaign_state,
 config.CACHE_ALIAS_PREFIX, "cache-alias", log_fn, should_stop)
 total_waves = total_waves + (copy_res.wavesTotal or 0)
+if copy_res.guardBeforeAnyWave then needs_retire = false end
 if not copy_res.ok or not campaign_state.workerStateSafe then
 
 break
@@ -588,6 +601,10 @@ end
 
 local waves_total = 0
 for step_idx = 1, #steps do
+local GUARD = _G.__s2_guard
+if GUARD and stage_name == "cache-alias" then
+GUARD.step(str_format("%s step %d/%d", stage_name, step_idx, #steps))
+end
 if should_stop and should_stop() then return {ok = false, wavesTotal = waves_total} end
 local step = steps[step_idx]
 local confirmed = false
@@ -618,6 +635,12 @@ rt.wr_u32(setup.gates.groupSessionSlot, group.session)
 rt.wr_u32(setup.gates.triggerHandleSlot, setup.handles.triggerHandle)
 rt.wr(setup.pinPkt, setup.pinStr1009)
 
+if GUARD and stage_name == "cache-alias" and
+not GUARD.quiet(rt, fs, setup, config, log, stage_name .. " wave") then
+fs.close_reservation_group(group, true, setup.pktBuf)
+return {ok = false, wavesTotal = waves_total,
+guardBeforeAnyWave = (step_idx == 1 and step_attempts == 1)}
+end
 local wave = M.execute_wave(rt, setup)
 if wave.created < 13 or wave.joined < 13 then
 fs.close_reservation_group(group, true, setup.pktBuf)

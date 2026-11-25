@@ -444,7 +444,25 @@ function M.start_frame_runner()
         return
     end
 
+    local okg, GUARD = pcall(require, "s2_guard")
+    if okg and type(GUARD) == "table" then
+        GUARD.attach(rt, fs)
+        _G.__s2_guard = GUARD
+    else
+        GUARD = nil
+        _G.__s2_guard = nil
+    end
+    if GUARD and phase == "setup" then
+        local okp, prev = pcall(GUARD.take_previous)
+        if okp and prev and #prev > 0 then
+            buf_log("PREVIOUS RUN STOPPED AT: " .. prev[#prev])
+            for i = math.max(1, #prev - 7), #prev - 1 do buf_log("  before that: " .. prev[i]) end
+            flush_new_lines()
+        end
+    end
+
     local function finish_run()
+        if GUARD then pcall(GUARD.clear) end
         flush_new_lines()
         append_sd_log(rt, fs, log_lines)
         _G.e:setEventHandler{ onEnterFrame = "n2h_launcher_idle" }
@@ -497,6 +515,10 @@ function M.start_frame_runner()
                     phase = "cleanup"
                 else
                     phase = "campaign"
+                    if GUARD then
+                        GUARD.bind(setup.handles.savedHandle)
+                        GUARD.progress(string.format("attempt %d: setup ok, canary campaign", attempt))
+                    end
                 end
                 flush_new_lines()
 
@@ -510,6 +532,7 @@ function M.start_frame_runner()
                     phase = "cleanup"
                 else
                     buf_log("CAMPAIGN: qualified canary flip! Installing cache alias...")
+                    if GUARD then GUARD.progress("canary flip qualified; cache alias next") end
                     phase = "alias"
                 end
                 flush_new_lines()
@@ -518,6 +541,10 @@ function M.start_frame_runner()
                 alias_res = RACE.prepare_and_install_alias(rt, fs, setup, config, campaign_state, buf_log, is_stop_pressed)
                 race_ms = math.floor((rt.now_ms() - t_r0) + 0.5)
                 RACE.log_attempt_summary(config, alias_res.aliasInstalled, rt.now_ms() - t_attempt0, buf_log)
+                if GUARD then
+                    GUARD.progress(alias_res.aliasInstalled and "cache alias ok; discover next"
+                        or ("cache alias failed: " .. tostring(alias_res.failureReason)))
+                end
                 if not alias_res.aliasInstalled then
                     buf_log("ALIAS FAIL: " .. tostring(alias_res.failureReason or "copy steps incomplete"))
                     phase = "cleanup"
@@ -542,6 +569,7 @@ function M.start_frame_runner()
                 flush_new_lines()
 
             elseif phase == "promote" then
+                if GUARD then GUARD.step("promote") end
                 local prom = PROMOTE.qualify_and_promote(rt, fs, setup, config, campaign_state,
                     alias_res, rel_res.pointerCandidates, buf_log, is_stop_pressed)
                 promote_ms = math.floor((rt.now_ms() - t_p0) + 0.5)
@@ -554,6 +582,10 @@ function M.start_frame_runner()
                 flush_new_lines()
 
             elseif phase == "cleanup" then
+                if GUARD then
+                    if promoted_ok then GUARD.step("cleanup after promotion") else GUARD.progress("cleanup") end
+                    GUARD.unbind()
+                end
                 if setup and setup.ok then
                     local clean_ok, clean_res = pcall(PROMOTE.retire_and_cleanup_attempt,
                         rt, fs, setup, config, campaign_state, alias_res, promoted_ok, buf_log)
