@@ -69,7 +69,7 @@ uint64_t save_title(void);
 typedef struct { uint8_t b[16]; } Uid;
 int save_list_users(Uid *out, int max);       // users that have an account save for the title
 int save_list_users_of(uint64_t title, Uid *out, int max);  // the same for another title (nothing unmounted)
-int user_list_all(Uid *out, int max);         // every user on the console, with a save or not (-1: unknown)
+int user_list_all(Uid *out, int max);
 // The only user whose Seedsow save save_mount opens (NULL: none).
 void save_allow_only(const Uid *uid);
 // Whether a user's save of `title` (Seedsow or its demo, whatever save_set_title chose) has one of these

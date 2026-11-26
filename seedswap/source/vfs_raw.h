@@ -1,6 +1,4 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// The platform's own file calls (plat_switch.c, plat_host.c). Everything else uses vfs_* from
-// platform.h, which vfs_split.c builds on these: it adds files kept in parts (issue 11).
 #pragma once
 #include "platform.h"
 

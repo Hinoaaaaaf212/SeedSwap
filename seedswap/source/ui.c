@@ -500,7 +500,7 @@ static const char *when_text(void);
 static bool progress_cb(float frac, const char *text);
 
 #ifndef ADD_TO_HOME
-#define ADD_TO_HOME 1   // 0 in the stable build: no Add to HOME (X in Convert)
+#define ADD_TO_HOME 1
 #endif
 
 // Progress of a job B can stop (the HOME install).

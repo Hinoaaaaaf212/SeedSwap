@@ -260,8 +260,6 @@ void users_load(Library *L) {
     }
 }
 
-// Every user on the console: the ones with a save of the host game first, then the others, so a user who
-// never started the host (or has the demo only, while the host is the full game) can still be picked.
 int users_rows(const Library *L, UserRow *out, int max) {
     Uid users[USERS_MAX], all[USERS_MAX];
     int n = save_list_users(users, USERS_MAX), k = 0, with_save = n < 0 ? 0 : n;

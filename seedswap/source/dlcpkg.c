@@ -195,7 +195,7 @@ struct DlcStream {
     Aes128 aes;
     uint64_t data_off;
     size_t block;
-    uint8_t *hashes;    // the level above the data: one SHA-256 per block
+    uint8_t *hashes;
     size_t hash_size;
 };
 
@@ -340,8 +340,6 @@ static bool read_image(Ctx *c, const char *data_name, DlcPackage *out) {
             return false;
         }
     }
-    // A big image (whole extra content, not an unlock) is not held in memory: its hash levels are, and
-    // dlcpkg_copy reads the data level block by block, checked against them, straight to the game's RomFS.
     bool stream = size[levels - 1] > DLCPKG_MAX_IMAGE;
     if (stream && levels < 2) return fail(c, "%s: unexpected hash tree.", e->name);
     uint8_t *data[6] = {0};
@@ -356,7 +354,7 @@ static bool read_image(Ctx *c, const char *data_name, DlcPackage *out) {
     }
     uint8_t digest[32];
     int held = levels - (stream ? 1 : 0);
-    if (ok && stream) {   // the first block of the data level, checked, to see that it is a RomFS
+    if (ok && stream) {
         size_t block = (size_t)1 << log2[levels - 1], n = size[levels - 1] < block ? (size_t)size[levels - 1] : block;
         data[levels - 1] = malloc(n);
         ok = data[levels - 1] && section_read(c, e, &s, &aes, off[levels - 1], data[levels - 1], n) &&

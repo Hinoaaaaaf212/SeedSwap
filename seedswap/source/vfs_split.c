@@ -1,13 +1,4 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Files kept in parts on the SD card, for FAT32 cards that hold files up to 4 GB only (issue 11).
-// Every caller sees one file:
-//   - a dump folder (name ends in .nsp/.nsz/.xci/.xcz) holding 00, 01, ...: a split dump. With its
-//     archive bit set the console's FS already shows it as one file; without it (copied from a
-//     Mac or Linux PC) it is a folder, read here part by part;
-//   - PATH.00, PATH.01, ... beside a missing PATH: what vfs_create makes when the card refuses a
-//     file over 4 GB, 0xFFFF0000 bytes per part. The loader reads romfs.bin.NN the same way (PATH wins when
-//     both are there).
-// Only the SD card; the save is passed through as is.
 #include "platform.h"
 #include "util.h"
 #include "vfs_raw.h"
@@ -37,16 +28,14 @@ static void lerr(const char *fmt, ...) {
 
 const char *vfs_last_error(void) { return g_lset ? g_lerr : pvfs_last_error(); }
 
-// The size of each new part. SEEDSWAP_PART_SIZE changes it in the PC build, for tests.
 static int64_t vfs_part_size(void) {
 #ifndef __SWITCH__
     const char *e = getenv("SEEDSWAP_PART_SIZE");
     if (e && atoll(e) > 0) return atoll(e);
 #endif
-    return 0xFFFF0000ll;   // as Nintendo's own big files on FAT32; 8 parts = 32 GB, what the loader looks for
+    return 0xFFFF0000ll;
 }
 
-// The biggest file a FAT32 card holds. SEEDSWAP_FAT32_MAX changes it in the PC build, for tests.
 static int64_t fat32_max(void) {
 #ifndef __SWITCH__
     const char *e = getenv("SEEDSWAP_FAT32_MAX");
@@ -72,7 +61,6 @@ static bool raw_file(VfsRoot r, const char *path, int64_t *size) {
     return pvfs_stat(r, path, &dir, size) == 0 && !dir;
 }
 
-// What PATH is: -1 missing, 1 a folder, 0 a file (kind, part count, part sizes; sizes may be NULL).
 static int lookup(VfsRoot r, const char *path, int *kind, int *n, int64_t *sizes) {
     bool dir = false;
     int64_t size = 0;
@@ -140,7 +128,7 @@ int vfs_list(VfsRoot r, const char *dir, VfsEntry **out, int *count) {
     for (int i = 0; i < n; i++) {
         size_t bl;
         int num;
-        if (e[i].is_dir && dump_name(e[i].name)) {   // a split dump folder: one file
+        if (e[i].is_dir && dump_name(e[i].name)) {
             char p[1024];
             int kind, parts;
             int64_t sizes[SPLIT_MAX];
@@ -151,13 +139,13 @@ int vfs_list(VfsRoot r, const char *dir, VfsEntry **out, int *count) {
                 e[i].size = 0;
                 for (int k = 0; k < parts; k++) e[i].size += sizes[k];
             }
-        } else if (!e[i].is_dir && part_suffix(e[i].name, &bl, &num)) {   // NAME.NN beside no NAME
+        } else if (!e[i].is_dir && part_suffix(e[i].name, &bl, &num)) {
             if (find_entry(e, n, e[i].name, bl) >= 0) continue;
-            if (num != 0) {   // counted under NAME.00 (or a stray part after a gap)
+            if (num != 0) {
                 drop[i] = true;
                 continue;
             }
-            group[i] = true;   // renamed below, once every name has been compared as listed
+            group[i] = true;
         }
     }
     for (int i = 0; i < n; i++) {
@@ -223,7 +211,6 @@ VfsFile *vfs_open(VfsRoot r, const char *path, bool write) {
     return f;
 }
 
-// The part holding byte off (the last part for off at or past the end).
 static int part_at(const VfsFile *f, int64_t off) {
     for (int i = 0; i < f->n - 1; i++)
         if (off < f->start[i + 1]) return i;
@@ -237,7 +224,7 @@ int vfs_read(VfsFile *f, int64_t off, void *buf, size_t n, size_t *got) {
     while (done < n) {
         int i = part_at(f, off);
         int64_t end = f->start[i + 1];
-        if (off >= end) break;   // the end of the file
+        if (off >= end) break;
         size_t want = n - done;
         if ((int64_t)want > end - off) want = (size_t)(end - off);
         size_t k = 0;
@@ -257,8 +244,6 @@ int vfs_write(VfsFile *f, int64_t off, const void *buf, size_t n) {
     g_lset = false;
     if (f->kind == K_PLAIN) {
         if (pvfs_write(f->p[0], off, buf, n) == 0) return 0;
-        // A file growing past what a FAT32 card holds (DLC appended to a romfs.bin just under 4 GB):
-        // it becomes PATH.00, and what follows goes to PATH.01, ...
         int64_t size = pvfs_size(f->p[0]);
         if (f->r != VFS_SD || !f->write || off + (int64_t)n <= fat32_max() || size < 0 || off > size) return -1;
         char p[1024];
@@ -284,10 +269,10 @@ int vfs_write(VfsFile *f, int64_t off, const void *buf, size_t n) {
         int i = part_at(f, off);
         bool last = i == f->n - 1;
         int64_t cap = f->start[i + 1] - f->start[i];
-        if (last && cap < part) cap = part;   // the last part grows up to a whole part
+        if (last && cap < part) cap = part;
         int64_t end = f->start[i] + cap;
         if (off > f->start[f->n]) { lerr("write past the end of %s", f->path); return -1; }
-        if (off >= end) {   // the last part is whole: start the next one
+        if (off >= end) {
             if (f->n == SPLIT_MAX) { lerr("%s would need more than %d parts", f->path, SPLIT_MAX); return -1; }
             char p[1024];
             part_name(f->kind, f->path, f->n, p, sizeof(p));
@@ -332,7 +317,6 @@ void vfs_close(VfsFile *f) {
     free(f);
 }
 
-// Deletes PATH.00 to PATH.63 that exist (parts left from an earlier write).
 static void delete_parts(VfsRoot r, const char *path) {
     for (int i = 0; i < SPLIT_MAX; i++) {
         char p[1024];
@@ -345,10 +329,9 @@ int vfs_create(VfsRoot r, const char *path, int64_t size) {
     g_lset = false;
     if (r != VFS_SD || size <= fat32_max()) return pvfs_create(r, path, size);
     if (vfs_stat(r, path, NULL, NULL) == 0) { lerr("create %s: it exists", path); return -1; }
-    if (pvfs_create(r, path, size) == 0) return 0;   // exFAT: one file
+    if (pvfs_create(r, path, size) == 0) return 0;
     char first[200];
     snprintf(first, sizeof(first), "%s", pvfs_last_error());
-    // FAT32: parts
     const int64_t part = vfs_part_size();
     int parts = (int)((size + part - 1) / part);
     if (parts > SPLIT_MAX) { lerr("create %s: %lld bytes need more than %d parts", path, (long long)size, SPLIT_MAX); return -1; }
@@ -373,7 +356,7 @@ int vfs_delete(VfsRoot r, const char *path) {
     int t = lookup(r, path, &kind, &n, NULL);
     if (t != 0) { lerr("delete %s: no such file", path); return -1; }
     int rc = kind == K_DIR ? pvfs_rmtree(r, path) : kind == K_PLAIN ? pvfs_delete(r, path) : 0;
-    delete_parts(r, path);   // with a plain file too, so no old parts show through later
+    delete_parts(r, path);
     return rc;
 }
 
@@ -401,7 +384,7 @@ int vfs_rename(VfsRoot r, const char *from, const char *to) {
         if (pvfs_rename(r, a, b) != 0) {
             char e[200];
             snprintf(e, sizeof(e), "%s", pvfs_last_error());
-            for (int k = 0; k < i; k++) {   // put the parts moved so far back
+            for (int k = 0; k < i; k++) {
                 part_name(K_SIB, from, k, a, sizeof(a));
                 part_name(K_SIB, to, k, b, sizeof(b));
                 pvfs_rename(r, b, a);
