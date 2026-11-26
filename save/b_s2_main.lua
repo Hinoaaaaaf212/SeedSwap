@@ -544,6 +544,7 @@ function M.start_frame_runner()
                 if GUARD then
                     GUARD.progress(alias_res.aliasInstalled and "cache alias ok; discover next"
                         or ("cache alias failed: " .. tostring(alias_res.failureReason)))
+                    if alias_res.aliasInstalled and GUARD.remember then pcall(GUARD.remember) end
                 end
                 if not alias_res.aliasInstalled then
                     buf_log("ALIAS FAIL: " .. tostring(alias_res.failureReason or "copy steps incomplete"))

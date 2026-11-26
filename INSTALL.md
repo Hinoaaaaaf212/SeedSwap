@@ -34,14 +34,14 @@ their authors and check every file.
 
 **With `build.exe` (Windows):**
 
-1. From the [experimental release](../../releases/tag/v1.0.0-experimental), download **`build.exe`** and **`seedswap.nro`**
+1. From the [experimental release](../../releases/tag/v1.0.1-experimental), download **`build.exe`** and **`seedswap.nro`**
    into one folder.
 2. Double-click **`build.exe`**. If Windows warns about an unknown app, click **More info → Run
    anyway**.
 
 **With Python (any PC, Python 3.8 or newer):**
 
-1. From the [experimental release](../../releases/tag/v1.0.0-experimental), download **`seedswap.nro`** and **Source code
+1. From the [experimental release](../../releases/tag/v1.0.1-experimental), download **`seedswap.nro`** and **Source code
    (zip)**.
 2. Unzip the source code, and put `seedswap.nro` in that folder.
 3. Open a terminal there and run `python3 build.py --nro seedswap.nro`. On Windows, use `py` in place
