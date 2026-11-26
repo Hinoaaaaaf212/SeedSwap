@@ -262,7 +262,7 @@ out:
 // The DLC images already built into the game (to build them in again next to a new one).
 typedef struct {
     int index;
-    uint8_t *image;         // NULL for a big one: it stays where it is in romfs.bin (at)
+    uint8_t *image;
     size_t size;
     uint64_t at;
     char name[16];
@@ -346,7 +346,7 @@ typedef struct {
     int index;
     char name[96], file[16];
     bool take;
-    uint8_t sha[32];   // a big image copied from its dump: its SHA-256 as written
+    uint8_t sha[32];
 } NewPack;
 
 // Adds a sentence about a dump that is left out to out->skipped.
@@ -360,7 +360,6 @@ static int rf_write(void *user, uint64_t off, const void *buf, size_t n) {
     return vfs_write((VfsFile *)user, (int64_t)off, buf, n);
 }
 
-// Zeros from `from` to `to` (the gaps between 16-byte aligned files), as the PC tools leave them.
 static bool zero_fill(VfsFile *f, int64_t from, int64_t to) {
     static const uint8_t zero[16];
     while (from < to) {
@@ -508,7 +507,7 @@ static bool dlc_add_set(const char *const *paths, int npaths, bool strict, const
             snprintf(path, sizeof(path), "/" AOC_DIRECTORY "/%s", b->name);
             uint64_t at = 0, len = 0;
             bool found = romfs_find(vfs_cb, rf, old_header, path, &at, &len);
-            if (found && len > DLCPKG_MAX_IMAGE) b->at = at;   // big: referenced where it is, not read
+            if (found && len > DLCPKG_MAX_IMAGE) b->at = at;
             else if (!found || !(b->image = malloc(len ? (size_t)len : 1)) ||
                      !read_at(rf, (int64_t)at, b->image, (size_t)len)) {
                 snprintf(err, errn, "The add-on content already built in (%s) could not be read back from romfs.bin.", path);
@@ -618,7 +617,6 @@ static bool dlc_add_set(const char *const *paths, int npaths, bool strict, const
     {
         uint8_t want[32], got[32], head[0x50];
         bool w = true;
-        // big add-on content: copied from its dump, block by block, each checked against the dump's hashes
         int64_t cursor = romfs_size;
         for (int i = 0; w && i < count; i++) {
             if (files[i].data || files[i].at) continue;
@@ -662,7 +660,7 @@ static bool dlc_add_set(const char *const *paths, int npaths, bool strict, const
             if (w && files[i].data)
                 w = (back = malloc(len ? (size_t)len : 1)) && read_at(rf, (int64_t)at, back, (size_t)len) &&
                     !memcmp(back, files[i].data, (size_t)len);
-            else if (w && !files[i].at) {   // copied from its dump: read back whole, by its hash
+            else if (w && !files[i].at) {
                 if (cb) cb(0.89f, "Reading the add-on content back…");
                 int k = 0;
                 while (k < npaths && !(np[k].take && !strcmp(np[k].file, files[i].name))) k++;

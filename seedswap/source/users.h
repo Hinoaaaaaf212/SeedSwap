@@ -30,7 +30,7 @@ typedef struct {
     bool guard;      // the loader's save guard lets only this user open Seedsow's save
     bool not_guard;  // the save guard is on, for another user
     bool play;       // the play user now
-    bool no_save;    // no save of the host game yet (it is made when the host first starts on this user)
+    bool no_save;
 } UserRow;
 
 // Works out the play user (L->play_user, play_user_set, play_user_source, names) from config.ini and

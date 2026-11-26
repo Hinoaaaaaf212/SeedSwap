@@ -163,7 +163,6 @@ int pvfs_list(VfsRoot r, const char *dir, VfsEntry **out, int *count) {
 
 static int save_room_for(int64_t size);
 
-// SEEDSWAP_FAT32=1: the SD card takes no file over 4 GB, as a FAT32 card (issue 11 tests)
 static bool fat32_refuses(VfsRoot r, int64_t end) {
     const char *m = getenv("SEEDSWAP_FAT32_MAX");
     return r == VFS_SD && getenv("SEEDSWAP_FAT32") && end > (m ? atoll(m) : 0xFFFFFFFFll);
@@ -475,7 +474,6 @@ static int save_room_for(int64_t size) {
     return 0;
 }
 
-// SEEDSWAP_ACCOUNTS: comma-separated user IDs on the stand-in console (unset: unknown)
 int user_list_all(Uid *out, int max) {
     const char *a = getenv("SEEDSWAP_ACCOUNTS");
     if (!a) return -1;

@@ -7,7 +7,6 @@ endif
 
 TARGET := seedswap
 VERSION := 1.0.0
-# 0 on the stable branch: no Add to HOME
 ADD_TO_HOME := 1
 BUILD := build
 PREFIX := $(DEVKITPRO)/devkitA64/bin/aarch64-none-elf-
@@ -15,7 +14,7 @@ include $(DEVKITPRO)/libounce/switch2_cpu.mk
 
 ARCH := $(SWITCH2_CPU) -mtp=soft -fPIE
 CFLAGS := $(ARCH) -std=gnu11 -O2 -Wall -Wextra -Werror -Wno-format-truncation -ffunction-sections -fdata-sections \
-    -D__SWITCH__ -D__SWITCH2__ -DADD_TO_HOME=$(ADD_TO_HOME) \
+    -D__SWITCH__ -D__SWITCH2__ -DADD_TO_HOME=$(ADD_TO_HOME) -DSEEDSWAP_VERSION=\"$(VERSION)\" \
     -I$(DEVKITPRO)/portlibs/switch2/include -I$(DEVKITPRO)/libounce/include -I$(DEVKITPRO)/portlibs/switch/include
 LDFLAGS := $(ARCH) -specs=$(DEVKITPRO)/libounce/switch.specs -Wl,--gc-sections
 LIBS := -L$(DEVKITPRO)/portlibs/switch2/lib -L$(DEVKITPRO)/libounce/lib -L$(DEVKITPRO)/portlibs/switch/lib -lzstd -lnx -lm

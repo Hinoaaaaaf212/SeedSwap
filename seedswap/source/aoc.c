@@ -206,10 +206,6 @@ static bool word_char(uint8_t c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
 }
 
-// The RomFS mount name from the game's strings, when the name passed to MountRom is a run-time value with
-// no .nrr paths (Final Fantasy X/X-2 HD keeps "rom" as a plain string, with "rom:/copyright/..." paths
-// beside it): a name that is both a string of its own ("\0rom\0") and the start of paths ("rom:/").
-// Names other mounts use are left out. True when exactly one is left.
 static bool path_mount_name(const NsoImage *main, char *out, size_t n) {
     static const char *const OTHERS[] = {"save", "sd", "sdmc", "cache", "temp", "tmp", "bcat", "host", "aoc",
                                          "addcont", "cont", "http", "https", "ftp", "file", "mms"};
@@ -228,7 +224,7 @@ static bool path_mount_name(const NsoImage *main, char *out, size_t n) {
         for (size_t k = 0; k < sizeof(OTHERS) / sizeof(*OTHERS) && !other; k++)
             other = strlen(OTHERS[k]) == len && !strncasecmp(OTHERS[k], (const char *)start, len);
         if (other || (found && strlen(out) == len && !memcmp(out, start, len))) continue;
-        uint8_t alone[18];   // "\0name\0"
+        uint8_t alone[18];
         alone[0] = 0;
         memcpy(alone + 1, start, len);
         alone[len + 1] = 0;
@@ -240,7 +236,7 @@ static bool path_mount_name(const NsoImage *main, char *out, size_t n) {
             q = z + 1;
         }
         if (!standalone) continue;
-        if (found++) return false;   // two names: undecided
+        if (found++) return false;
         memcpy(out, start, len);
         out[len] = 0;
     }
@@ -323,7 +319,6 @@ bool aoc_locate(const NsoImage *sdk, const NsoImage *main, AocSites *out, char *
     }
     if (unnamed) {
         char name[32];
-        // from the .nrr paths; else the name the other calls pass; else the one name both alone and before ":/"
         if (!nrr_mount_name(main, name, sizeof(name))) {
             if (found)
                 snprintf(name, sizeof(name), "%s", out->mount_name);
@@ -984,9 +979,6 @@ bool romfs_plan(RomfsReadFn read, void *user, const uint8_t header[0x50], uint64
         goto done;
     }
     {
-        // the tail: each file 16-byte aligned, then the four tables. Files the caller writes (data NULL)
-        // come first, so the part held in memory starts after them; files already in the image stay where
-        // they are. With neither, this is the layout the PC tools make.
         uint64_t tail = 0;
         for (int i = 0; i < count; i++) {
             if (files[i].data || files[i].at) continue;
