@@ -6,7 +6,7 @@ $(error "Please set DEVKITPRO in your environment")
 endif
 
 TARGET := seedswap
-VERSION := 1.0.0
+VERSION := 1.0.1
 ADD_TO_HOME := 0
 BUILD := build
 PREFIX := $(DEVKITPRO)/devkitA64/bin/aarch64-none-elf-

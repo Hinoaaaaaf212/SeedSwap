@@ -13,9 +13,10 @@
 --                       heap must not change for a short window (cmd 1009, the expanded heap's
 --                       peak free size, the counter every wave already checks); it waits up to
 --                       about 1.2 s for that, else the stage is not run (the attempt is retried).
---   candidate_ok(...)   the candidate must cost exactly what it cost in every logged good run
---                       (7536 bytes on this console; _G.S2_CANDIDATE_ALLOC changes it). Any other
---                       cost means FS's heap is not in the state the race was built for.
+--   candidate_ok(...)   the candidate must cost what it cost in this console's good runs
+--                       (save:/s2_candidate.txt, written after a HIT; _G.S2_CANDIDATE_ALLOC
+--                       overrides). It differs between consoles (7536 B, 7440 B), so with no
+--                       record any cost goes, and after MISMATCH_LIMIT refusals in a run it goes.
 --   progress(...)       one line appended to save:/s2_progress.log and committed, at points where
 --                       the run holds nothing in FS (setup done, canary qualified, alias result,
 --                       cleanup). A clean end deletes the file; a run that finds one shows it first
@@ -27,28 +28,29 @@ local P = require("s2_prim")
 
 local G = {}
 local PATH = "/s2_progress.log"
+local LEARNED = "/s2_candidate.txt"
 local str_format = string.format
 
-G.expected_candidate_alloc = _G.S2_CANDIDATE_ALLOC or 7536
+G.override = _G.S2_CANDIDATE_ALLOC
+G.learned = G.override
+G.MISMATCH_LIMIT = 3
+G.mismatches = 0
 G.QUIET_WINDOW_MS = 5
 G.QUIET_PAUSE_MS = 40
 G.QUIET_TRIES = 25
 G.detail = (_G.S2_PROGRESS_DETAIL == true)
 G.stats = {quietChecks = 0, quietWaits = 0, busy = 0}
 
-function G.attach(rt, fs)
-    G.rt, G.fs = rt, fs
-end
-
 -- ---- progress log in save: (through an FS session handle the caller owns)
 
-local function append(handle, text)
+local function append(handle, text, path)
     local rt, fs = G.rt, G.fs
-    local ex = fs.ipc_get_entry_type(handle, PATH)
+    path = path or PATH
+    local ex = fs.ipc_get_entry_type(handle, path)
     if ex.transport ~= 0 or ex.result ~= 0 then
-        fs.ipc_create_file(handle, PATH, 0)
+        fs.ipc_create_file(handle, path, 0)
     end
-    local fh = fs.ipc_open_file(handle, PATH, 7)
+    local fh = fs.ipc_open_file(handle, path, 7)
     if fh == 0 then return false end
     local offset = fs.ipc_file_get_size(fh) or 0
     local buf, raw = rt.alloc_page(#text + 0x1000, false)
@@ -64,9 +66,9 @@ local function append(handle, text)
     return fs.ipc_commit(handle) == 0
 end
 
-local function read_all(handle)
+local function read_all(handle, path)
     local rt, fs = G.rt, G.fs
-    local fh = fs.ipc_open_file(handle, PATH, 1)
+    local fh = fs.ipc_open_file(handle, path or PATH, 1)
     if fh == 0 then return nil end
     local size = fs.ipc_file_get_size(fh) or 0
     local text = ""
@@ -97,6 +99,19 @@ local function with_save(fn)
     local ok, res = pcall(fn, h)
     rt.close_handle(h)
     return ok and res or nil
+end
+
+function G.attach(rt, fs)
+    G.rt, G.fs = rt, fs
+    G.mismatches, G.last_cost = 0, nil
+    G.learned = G.override
+    if G.learned then return end
+    local ok, text = pcall(with_save, function(h)
+        local ex = fs.ipc_get_entry_type(h, LEARNED)
+        if ex.transport ~= 0 or ex.result ~= 0 then return false end
+        return read_all(h, LEARNED) or false
+    end)
+    G.learned = ok and type(text) == "string" and tonumber(text:match("%d+")) or nil
 end
 
 -- At the start of a run: the previous run's progress lines when it did not end cleanly (nil if
@@ -179,13 +194,28 @@ function G.quiet(rt, fs, setup, config, log_fn, what)
 end
 
 function G.candidate_ok(alloc_cost, log_fn)
-    if alloc_cost == G.expected_candidate_alloc then return true end
+    G.last_cost = alloc_cost
+    if not G.learned or alloc_cost == G.learned then return true end
+    G.mismatches = G.mismatches + 1
+    if G.mismatches > G.MISMATCH_LIMIT then
+        if log_fn then
+            log_fn(str_format("GUARD: candidate cost %dB again (good runs had %dB); trying it", alloc_cost or -1, G.learned))
+        end
+        return true
+    end
     if log_fn then
-        log_fn(str_format("GUARD: candidate cost %dB, expected %dB; FS heap is not as the race needs, not writing",
-            alloc_cost or -1, G.expected_candidate_alloc))
+        log_fn(str_format("GUARD: candidate cost %dB, good runs had %dB; FS heap is not as the race needs, not writing",
+            alloc_cost or -1, G.learned))
     end
     G.step(str_format("guard: candidate cost %dB", alloc_cost or -1))
     return false
+end
+
+function G.remember()
+    local cost = G.last_cost
+    if G.override or not (G.handle and G.fs and cost) or cost == G.learned then return end
+    G.fs.ipc_delete_file(G.handle, LEARNED)
+    if append(G.handle, tostring(cost) .. "\n", LEARNED) then G.learned = cost end
 end
 
 return G
